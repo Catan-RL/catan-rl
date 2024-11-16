@@ -20,7 +20,7 @@ from catan_env.game.utils import DFS
 from catan_env.ui.display import Display
 
 
-class Game(object):
+class Game():
     def __init__(
         self,
         board_config={},
@@ -98,13 +98,19 @@ class Game(object):
             PlayerId.Orange: 15,
             PlayerId.White: 15,
         }
-        self.development_cards = (
-            [DevelopmentCard.Knight] * 14
-            + [DevelopmentCard.VictoryPoint] * 5
-            + [DevelopmentCard.YearOfPlenty] * 2
-            + [DevelopmentCard.RoadBuilding] * 2
-            + [DevelopmentCard.Monopoly] * 2
-        )
+
+        self.max_dev_cards_by_type: dict[DevelopmentCard, int] = {
+                DevelopmentCard.Knight: 14,
+                DevelopmentCard.VictoryPoint: 5,
+                DevelopmentCard.YearOfPlenty: 2,
+                DevelopmentCard.RoadBuilding: 2,
+                DevelopmentCard.Monopoly: 2,
+            }
+        self.development_cards: list[DevelopmentCard] = [
+            card
+            for card, count in self.max_dev_cards_by_type.items()
+            for _ in range(count)
+        ]
         np.random.shuffle(self.development_cards)
         self.development_cards_pile = deque(self.development_cards)
         self.longest_road = None
