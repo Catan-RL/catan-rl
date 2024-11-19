@@ -1,7 +1,7 @@
 import copy
 
 from catan_env.game.components.buildings import Building
-from catan_env.game.enums import PlayerId, Resource
+from catan_env.game.enums import DevelopmentCard, PlayerId, Resource
 
 
 class Player(object):
@@ -43,7 +43,7 @@ class Player(object):
         }
         self.opponent_min_res = copy.deepcopy(self.opponent_max_res)
         self.harbours = {}
-        self.longest_road = 0
-        self.hidden_cards = []
-        self.visible_cards = []
-        self.victory_points = 0
+        self.longest_road: int = 0
+        self.hidden_cards: list[DevelopmentCard] = []
+        self.visible_cards: list[DevelopmentCard] = []
+        self.victory_points: int = 0

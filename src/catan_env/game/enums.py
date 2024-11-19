@@ -3,8 +3,8 @@ from enum import IntEnum
 
 
 class BuildingType(IntEnum):
-    Settlement = 0
-    City = 1
+    Settlement = 1
+    City = 2
 
 
 class PlayerId(IntEnum):
@@ -31,6 +31,19 @@ class Resource(IntEnum):
     Sheep = 4
     Wheat = 5
 
+    def int_non_empty(self) -> int:
+        return int(self) - 1
+
+    @staticmethod
+    def non_empty():
+        return [
+            Resource.Brick,
+            Resource.Wood,
+            Resource.Ore,
+            Resource.Sheep,
+            Resource.Wheat,
+        ]
+
 
 class DevelopmentCard(IntEnum):
     Knight = 0
@@ -46,9 +59,9 @@ class ActionTypes(IntEnum):
     UpgradeToCity = 2
     BuyDevelopmentCard = 3
     PlayDevelopmentCard = 4
-    ExchangeResource = 5
-    ProposeTrade = 6
-    RespondToOffer = 7
+    # ExchangeResource = 5
+    # ProposeTrade = 6
+    # RespondToOffer = 7
     MoveRobber = 8
     RollDice = 9
     EndTurn = 10

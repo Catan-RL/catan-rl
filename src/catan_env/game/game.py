@@ -59,7 +59,7 @@ class Game():
 
     def reset(self):
         self.board.reset()
-        self.player_order = [
+        self.player_order: list[PlayerId] = [
             PlayerId.White,
             PlayerId.Blue,
             PlayerId.Orange,

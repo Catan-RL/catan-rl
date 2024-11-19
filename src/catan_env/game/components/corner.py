@@ -1,3 +1,6 @@
+from catan_env.game.components.buildings import Building
+
+
 class Corner(object):
     def __init__(self, id: int):
         self.id: int = id
@@ -8,7 +11,7 @@ class Corner(object):
         self.adjacent_tiles = [None, None, None]
 
         self.harbour = None
-        self.building = None
+        self.building: Building | None = None
 
     def __eq__(self, other):
         if self.id == other.id:

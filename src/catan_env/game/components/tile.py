@@ -1,3 +1,4 @@
+from catan_env.game.components.corner import Corner
 from catan_env.game.enums import Resource, Terrain
 
 
@@ -21,7 +22,7 @@ class Tile(object):
         self.id = id
         self.contains_robber = False
 
-        self.corners = {
+        self.corners: dict[str, Corner | None] = {
             "T": None,
             "TL": None,
             "BL": None,
