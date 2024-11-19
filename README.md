@@ -29,8 +29,12 @@ source ~/miniconda3/bin/activate
 conda init bash
 ```
 
-To Enable SSH X11 Forwarding
-Edit `/etc/ssh/sshd_config` and set `X11UseLocalhost no`, then `systemctl restart sshd`.
+To enable SSH X11 forwarding, edit `/etc/ssh/sshd_config` and set `X11UseLocalhost no`, then `systemctl restart sshd`.
+
+To connect to GCP instance (currently the project is only set up for the `jyan1236` user):
+```
+gcloud compute ssh --ssh-flag="-Y" jyan1236@gpu-instance
+```
 
 GCP instance details:
 ```
