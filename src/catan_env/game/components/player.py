@@ -1,10 +1,11 @@
 import copy
 
 from catan_env.game.components.buildings import Building
+from catan_env.game.components.harbour import Harbour
 from catan_env.game.enums import DevelopmentCard, PlayerId, Resource
 
 
-class Player(object):
+class Player():
     def __init__(self, id: PlayerId):
         self.id: PlayerId = id
 
@@ -42,7 +43,7 @@ class Player(object):
             "next_next_next": copy.deepcopy(self.visible_resources),
         }
         self.opponent_min_res = copy.deepcopy(self.opponent_max_res)
-        self.harbours = {}
+        self.harbours: dict[Resource, Harbour] = {}
         self.longest_road: int = 0
         self.hidden_cards: list[DevelopmentCard] = []
         self.visible_cards: list[DevelopmentCard] = []

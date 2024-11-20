@@ -1,5 +1,5 @@
 import copy
-from collections import Counter
+from collections import Counter, OrderedDict
 from typing import Any
 
 import gymnasium.spaces as spaces
@@ -34,10 +34,12 @@ class PettingZooCatanEnv(AECEnv):
         policies: None = None,
         num_players: int = 4,
         enable_dev_cards: bool = True,
+        max_actions_per_turn: int = 10,
     ):
         super().__init__()
 
         self.enable_dev_cards: bool = enable_dev_cards
+        self.max_actions_per_turn: int = max_actions_per_turn
 
         self.game: Game = Game(
             interactive=interactive, debug_mode=debug_mode, policies=policies
@@ -77,7 +79,7 @@ class PettingZooCatanEnv(AECEnv):
             agent: 0 for agent in self.agents
         }
 
-    def step(self, action: np.ndarray) -> None:
+    def step(self, action: list[np.ndarray]) -> None:
         if (
             self.terminations[self.agent_selection]
             or self.truncations[self.agent_selection]
@@ -93,7 +95,9 @@ class PettingZooCatanEnv(AECEnv):
 
         valid_action, error = self.game.validate_action(translated_action)
         if not valid_action:
-            raise RuntimeError(f"Invalid action: {error}")
+            raise RuntimeError(
+                f"Invalid action {translated_action}\nResulted in: {error}"
+            )
 
         message = self.game.apply_action(translated_action)
         self.infos[self.agent_selection]["log"] = message
@@ -112,28 +116,39 @@ class PettingZooCatanEnv(AECEnv):
             self.terminations = {agent: True for agent in self.agents}
             self.truncations = {agent: True for agent in self.agents}
 
-        # update agent selection
+        # update agent selection, if applicable
+        # note that the same agent might keep control for some time
         self.agent_selection = self.game.players_go
 
     def observe(self, agent: PlayerId) -> dict[str, Any]:
-        this_agent_space = self._get_public_player_features(agent)
-        this_agent_space.append(self._get_unplayed_dev_cards_features(agent))
+        this_agent_space = (
+            *self._get_public_player_features(agent),
+            self._get_unplayed_dev_cards_features(agent),
+        )
 
         other_agent_spaces = {
-            str(agent_id): self._get_public_player_features(agent_id)
-            + [self._get_hidden_dev_card_count_features(agent_id)]
+            str(self._get_agent_rel_pos(agent, agent_id)): (
+                *self._get_public_player_features(agent_id),
+                self._get_hidden_dev_card_count_features(agent_id),
+            )
             for agent_id in self.agents
             if agent_id != agent
         }
 
-        obs = {
-            "tile_features": self._get_tile_features(),
-            "corner_features": self._get_corner_features(agent),
-            "edge_features": self._get_edge_features(agent),
-            "bank_features": self._get_bank_features(),
-            "this_agent": this_agent_space,
-            "other_agents": other_agent_spaces,
-        }
+        action_mask = tuple(self._get_action_mask(agent))
+
+        # TODO: flatten this into a numpy array under the observation key
+        obs = OrderedDict(
+            {
+                "tile_features": self._get_tile_features(),
+                "corner_features": self._get_corner_features(agent),
+                "edge_features": self._get_edge_features(agent),
+                "bank_features": self._get_bank_features(),
+                "this_agent": this_agent_space,
+                "other_agents": other_agent_spaces,
+                "action_mask": action_mask,
+            }
+        )
         return obs
 
     def action_space(self, agent: PlayerId) -> spaces.Space:
@@ -143,8 +158,57 @@ class PettingZooCatanEnv(AECEnv):
         return self.observation_spaces[agent]
 
     def _get_action_space(self, _agent: PlayerId) -> spaces.Space:
-        # TODO: figuer this out later
-        return spaces.Discrete(len(ActionTypes))
+        """
+
+        There are mutliple actions heads.
+        Head 1: Action Type
+            1 hot of length: len(ActionTypes.in_use()
+
+        Head 2: Tile
+            Corresponds to MoveRobber
+            1 hot of length N_TILES
+
+        Head 3: Corner
+            Corresponds to PlaceSettlement, UpgradeToCity
+            1 hot of length N_CORNERS
+
+        Head 4: Edge
+            Corresponds to PlaceRoad
+            1 hot of length N_EDGES + 1
+            the last, extra value is an empty road, signifying skipping the road placement
+            only allowed to skip when in road building mode after playing a road building dev card
+            and there are no more valid roads to place
+
+        Head 5: Development Card
+            Corresponds to PlayDevelopmentCard
+            1 hot of length len(DevelopmentCard)
+
+        Head 6: Resource
+            Corresponds to ExchangeResource (port trade), DiscardResource, and some PlayDevelopmentCard
+            2 one-hots of shape (2, len(Resource.non_empty()))
+            the first is the first resource; these actions: DiscardResource, PlayDevelopmentCard.Monopoly
+            the second is only used for actions that require two resources: ExchangeResource, PlayDevelopmentCard.YearOfPlenty
+
+        Head 7: Player
+            Corresponds to StealResource
+            Note that 0 is this player, 1 is next, 2 is next next, etc.
+            1 hot of length num_max_agents
+        """
+        head_1 = spaces.MultiBinary(len(ActionTypes.in_use()))
+        head_2 = spaces.MultiBinary(N_TILES)
+        head_3 = spaces.MultiBinary(N_CORNERS)
+        head_4 = spaces.MultiBinary(N_EDGES + 1)
+        head_5 = spaces.MultiBinary(len(DevelopmentCard))
+        head_6 = spaces.MultiBinary((2, len(Resource.non_empty())))
+        head_7 = spaces.MultiBinary(self.num_max_agents)
+
+        action_space = spaces.Tuple(
+            [head_1, head_2, head_3, head_4, head_5, head_6, head_7]
+        )
+        return action_space
+
+    def _get_flat_obs_space(self, _agent: PlayerId) -> spaces.Space:
+        return spaces.flatten_space(self._get_obs_space(_agent))
 
     def _get_obs_space(self, _agent: PlayerId) -> spaces.Space:
         """
@@ -200,49 +264,96 @@ class PettingZooCatanEnv(AECEnv):
             count of hidden dev cards - can be [0, 25]
         """
 
-        tile_features = spaces.Tuple(
-            # TODO: do I need to make a deepcopy of this
-            [
-                # contains robber: True (1) or False (0)
-                spaces.MultiBinary(1),
-                spaces.Discrete(11, start=2),  # tile value: [2, 12]
-                spaces.Discrete(len(Resource)),  # resource type of tile
-            ]
-            * N_TILES
+        # tile_features = spaces.Tuple(
+        #     # TODO: do I need to make a deepcopy of this
+        #     [
+        #         # contains robber: True (1) or False (0)
+        #         spaces.MultiBinary(1),
+        #         spaces.Discrete(11, start=2),  # tile value: [2, 12]
+        #         spaces.Discrete(len(Resource)),  # resource type of tile
+        #     ]
+        #     * N_TILES
+        # )
+
+        # tile_features is an (N_TILES, 3) array where:
+        # - Column 0 represents whether the tile contains a robber (0 = No, 1 = Yes).
+        # - Column 1 represents the tile value (integer range: 2 to 12).
+        # - Column 2 represents the resource type (integer range: min(Resource) to max(Resource)).
+        tile_features = spaces.Box(
+            low=np.array([[0, 2, min(Resource)]] * N_TILES, dtype=np.int8),
+            high=np.array([[1, 12, max(Resource)]] * N_TILES, dtype=np.int8),
+            dtype=np.int8,
         )
 
-        corner_features = spaces.Tuple(
-            [
-                # building type: settlement, city, or None
-                spaces.Discrete(len(BuildingType) + 1),
-                spaces.Discrete(self.num_max_agents + 1),  # owner
-            ]
-            * N_CORNERS
+        # corner_features = spaces.Tuple(
+        #     [
+        #         # building type: settlement, city, or None
+        #         spaces.Discrete(len(BuildingType) + 1),
+        #         spaces.Discrete(self.num_max_agents + 1),  # owner
+        #     ]
+        #     * N_CORNERS
+        # )
+        #
+
+        # corner_features is an (N_CORNERS, 2) array where:
+        # - Column 0 represents building type (0 = None, 1...len(BuildingType)).
+        # - Column 1 represents the owner (0 = None, 1...self.num_max_agents).
+        corner_features = spaces.Box(
+            low=np.array([[0, 0]] * N_CORNERS, dtype=np.int8),
+            high=np.array(
+                [[len(BuildingType) + 1, self.num_max_agents + 1]] * N_CORNERS,
+                dtype=np.int8,
+            ),
+            dtype=np.int8,
         )
 
-        edge_features = spaces.Tuple(
-            [
-                # road owner, or None for no road
-                spaces.Discrete(self.num_max_agents + 1)
-            ]
-            * N_EDGES
+        # edge_features = spaces.Tuple(
+        #     [
+        #         # road owner, or None for no road
+        #         spaces.Discrete(self.num_max_agents + 1)
+        #     ]
+        #     * N_EDGES
+        # )
+
+        # edge_features is an (N_EDGES, 1) array where:
+        # - Column 0 represents the road owner (0 = None, 1...self.num_max_agents).
+        edge_features = spaces.Box(
+            low=np.array([[0]] * N_EDGES, dtype=np.int8),
+            high=np.array(
+                [[self.num_max_agents + 1]] * N_EDGES, dtype=np.int8
+            ),
+            dtype=np.int8,
         )
 
         # bank; subtract 1 for empty
-        bank = spaces.MultiDiscrete(
-            [6] * (len(Resource) - 1 + int(self.enable_dev_cards))
+        # bank = spaces.MultiDiscrete(
+        #     [6] * (len(Resource) - 1 + int(self.enable_dev_cards))
+        # )
+
+        # bank is a (len(Resource) - 1 + int(self.enable_dev_cards),) array where:
+        # - Each element represents the quantity of a resource or development card (range: 0 to 5).
+        bank = spaces.Box(
+            low=0,
+            high=5,
+            shape=(len(Resource) - 1 + int(self.enable_dev_cards), 1),
+            dtype=np.int8,
         )
 
+        # public_player_space is a list where:
+        # - The first 6 entries represent binary or integer values for player states (e.g., need to discard, longest road).
+        # - The next 4 entries are structured as arrays representing harbors, resources, resource production, and played development cards.
         public_player_space: list[spaces.Space] = [
             spaces.MultiBinary(1),  # need to discard
             spaces.MultiBinary(1),  # has longest road
             spaces.Discrete(15),  # len of agent's longest road
             spaces.MultiBinary(1),  # has largest army
             spaces.Discrete(14),  # size of agent's army
-            spaces.Discrete(9, start=2),  # agent's VPs
-            # harbors - replace empty with 3:1
+            spaces.Discrete(11),  # agent's VPs
+            # Harbors: 1 for each resource type (empty is replaced with 3:1 harbor)
             spaces.MultiBinary(len(Resource)),
-            spaces.MultiDiscrete([9] * len(Resource.non_empty())),  # resources
+            # Resources: count of each resource type the player has
+            spaces.MultiDiscrete([9] * len(Resource.non_empty())),
+            # Resource production: resources x tile roll values (offset [2, 12] to indices [0, 10])
             # resource production
             spaces.Box(
                 low=0,  # min number of resources per roll
@@ -273,71 +384,101 @@ class PettingZooCatanEnv(AECEnv):
 
         other_agent_spaces = spaces.Dict(
             {
-                str(agent_id): spaces.Tuple(
+                str(rel_pos): spaces.Tuple(
                     public_player_space.copy()
                     +
                     # count of hidden dev cards
                     [spaces.Discrete(len(self.game.development_cards))]
                 )
-                for agent_id in self.possible_agents
+                for rel_pos in range(1, len(self.possible_agents))
             }
         )
 
-        obs = {
-            "tile_features": tile_features,
-            "corner_features": corner_features,
-            "edge_features": edge_features,
-            "bank_features": bank,
-            # TODO: should I key this with this agent's id?
-            "this_agent": this_agent_space,
-            "other_agents": other_agent_spaces,
-        }
+        action_mask = self._get_action_space(_agent)
 
-        return spaces.Dict(obs)
+        # TODO: flatten this into a numpy array under the observation key
+        obs = spaces.Dict(
+            {
+                "tile_features": tile_features,
+                "corner_features": corner_features,
+                "edge_features": edge_features,
+                "bank_features": bank,
+                "this_agent": this_agent_space,
+                "other_agents": other_agent_spaces,
+                "action_mask": action_mask,
+            }
+        )
 
-    def _translate_action(self, action: np.ndarray) -> dict[str, Any]:
-        action_type = action[0]
-        translated = {
+        return obs
+
+    def _translate_action(self, action: list[np.ndarray]) -> dict[str, Any]:
+        (
+            head_action_type,
+            head_tile,
+            head_corner,
+            head_edge,
+            head_dev_card,
+            head_resource,
+            head_player,
+        ) = action
+
+        action_type = ActionTypes(head_action_type.argmax().item())
+        translated: dict[str, Any] = {
             "type": action_type,
         }
 
         match action_type:
+            case ActionTypes.MoveRobber:
+                translated["tile"] = head_tile.argmax().item()
             case ActionTypes.PlaceSettlement | ActionTypes.UpgradeToCity:
-                translated["corner"] = action[1]
+                translated["corner"] = head_corner.argmax().item()
             case ActionTypes.PlaceRoad:
-                # TODO: figure out why there is a dummy edge needed
-                translated["edge"] = (
-                    action[2] if action[1] != N_EDGES else None
-                )
+                edge = head_edge.argmax().item()
+
+                # the last edge is the empty edge, which means skipping the road placement
+                if edge == N_EDGES:
+                    edge = None
+                translated["edge"] = edge
             case ActionTypes.PlayDevelopmentCard:
-                card_type = DevelopmentCard(action[4])
+                card_type = DevelopmentCard(head_dev_card.argmax().item())
                 translated["card"] = card_type
 
                 match card_type:
-                    # TODO: figure this portion too, bc the old wrapper does some weird head out stuff
                     case DevelopmentCard.YearOfPlenty:
-                        translated["resource_1"] = action[5]
-                        translated["resource_2"] = action[6]
+                        translated["resource_1"] = Resource(
+                            head_resource[0].argmax().item()
+                        )
+                        translated["resource_2"] = Resource(
+                            head_resource[1].argmax().item()
+                        )
                     case DevelopmentCard.Monopoly:
-                        translated["resource"] = action[5]
-                    case _:
-                        pass
+                        translated["resource"] = Resource(
+                            head_resource[0].argmax().item()
+                        )
 
-            case ActionTypes.MoveRobber:
-                translated["tile"] = action[3]
             case ActionTypes.StealResource:
-                target_player = action[6]
-                # TODO: figure out the translation from action to PlayerId
-                translated["target"] = target_player
+                rel_pos = head_player[0].argmax().item()
+                translated["target"] = self._get_agent_from_rel_pos(
+                    self.agent_selection, rel_pos
+                )
             case ActionTypes.DiscardResource:
-                # TODO: figure out the head out stuff here too
-                translated["resource"] = action[7]
+                translated["resource"] = Resource(
+                    head_resource[0].argmax().item()
+                )
 
-            # nothing special for the rest:
-            # ActionTypes.BuyDevelopmentCard
-            # ActionTypes.RollDice
-            # ActionTypes.EndTurn
+            case ActionTypes.ExchangeResource:
+                translated["desired_resource"] = Resource(
+                    head_resource[0].argmax().item()
+                )
+                translated["trading_resource"] = Resource(
+                    head_resource[1].argmax().item()
+                )
+                translated["exchange_rate"] = self._get_exchange_rate(
+                    self.agent_selection, translated["desired_resource"]
+                )
+
             case _:
+                # nothing special for the rest
                 pass
 
         return translated
@@ -392,27 +533,6 @@ class PettingZooCatanEnv(AECEnv):
 
         self.rewards = rewards
 
-    def _get_tile_features(self) -> npt.NDArray:
-        tile_features: list[list[float]] = []
-        for tile in self.game.board.tiles:
-            tile_features.append(
-                [
-                    float(tile.contains_robber),
-                    float(tile.value),
-                    float(tile.resource),
-                ]
-            )
-
-        features_arr = np.array(tile_features, dtype=np.float32)
-
-        if features_arr.shape != (N_TILES, 3):
-            raise ValueError(
-                f"Tile features have the wrong shape: {features_arr.shape}."
-                f"Should be ({N_TILES}, 3)."
-            )
-
-        return features_arr
-
     def _get_agent_rel_pos(
         self, curr_agent: PlayerId, target_agent: PlayerId
     ) -> int:
@@ -440,7 +560,38 @@ class PettingZooCatanEnv(AECEnv):
 
         return rel_pos
 
-    def _get_corner_features(self, agent: PlayerId) -> npt.NDArray:
+    def _get_agent_from_rel_pos(
+        self, curr_agent: PlayerId, rel_pos: int
+    ) -> PlayerId:
+        """Returns the PlayerId of the agent that is the given relative positional distance from the current agent."""
+
+        curr_agent_idx = self.game.player_order.index(curr_agent)
+        target_idx = (curr_agent_idx + rel_pos) % len(self.game.player_order)
+
+        return self.game.player_order[target_idx]
+
+    def _get_tile_features(self) -> npt.NDArray[np.int8]:
+        tile_features: list[list[float]] = []
+        for tile in self.game.board.tiles:
+            tile_features.append(
+                [
+                    float(tile.contains_robber),
+                    float(tile.value),
+                    float(tile.resource),
+                ]
+            )
+
+        features_arr = np.array(tile_features, dtype=np.int8)
+
+        if features_arr.shape != (N_TILES, 3):
+            raise ValueError(
+                f"Tile features have the wrong shape: {features_arr.shape}."
+                f"Should be ({N_TILES}, 3)."
+            )
+
+        return features_arr
+
+    def _get_corner_features(self, agent: PlayerId) -> npt.NDArray[np.int8]:
         corner_features: list[list[float]] = []
         for corner in self.game.board.corners:
             building: Building | None = corner.building
@@ -458,7 +609,7 @@ class PettingZooCatanEnv(AECEnv):
 
             corner_features.append([float(building_type), float(owner_id)])
 
-        features_arr = np.array(corner_features, dtype=np.float32)
+        features_arr = np.array(corner_features, dtype=np.int8)
         if features_arr.shape != (N_CORNERS, 2):
             raise ValueError(
                 f"Corner features have the wrong shape: {features_arr.shape}."
@@ -466,7 +617,7 @@ class PettingZooCatanEnv(AECEnv):
             )
         return features_arr
 
-    def _get_edge_features(self, agent: PlayerId) -> npt.NDArray:
+    def _get_edge_features(self, agent: PlayerId) -> npt.NDArray[np.int8]:
         edge_features: list[list[float]] = []
 
         for edge in self.game.board.edges:
@@ -480,7 +631,7 @@ class PettingZooCatanEnv(AECEnv):
 
             edge_features.append([float(owner_id)])
 
-        features_arr = np.array(edge_features, dtype=np.float32)
+        features_arr = np.array(edge_features, dtype=np.int8)
         if features_arr.shape != (N_EDGES, 1):
             raise ValueError(
                 f"Edge features have the wrong shape: {features_arr.shape}."
@@ -488,10 +639,10 @@ class PettingZooCatanEnv(AECEnv):
             )
         return features_arr
 
-    def _get_bank_features(self) -> npt.NDArray:
+    def _get_bank_features(self) -> npt.NDArray[np.int8]:
         features_arr: npt.NDArray = np.zeros(
             (len(Resource) - 1 + int(self.enable_dev_cards), 1),
-            dtype=np.float32,
+            dtype=np.int8,
         )
         for i, resource in enumerate(Resource):
             # we ignore the empty resource, with idx = 0 for the first real resource
@@ -532,13 +683,22 @@ class PettingZooCatanEnv(AECEnv):
         ):
             raise ValueError(
                 f"Bank features have the wrong shape: {features_arr.shape}."
-                f"Should be ({len(Resource) - 1 + int(self.enable_dev_cards)}, 1)."
+                f"Should be (len(Resource) - 1 + int(self.enable_dev_cards), 1)."
             )
         return features_arr
 
-    def _get_public_player_features(
-        self, agent: PlayerId
-    ) -> list[npt.NDArray]:
+    def _get_public_player_features(self, agent: PlayerId) -> tuple[
+        npt.NDArray[np.int8],
+        npt.NDArray[np.int8],
+        np.int64,
+        npt.NDArray[np.int8],
+        np.int64,
+        np.int64,
+        npt.NDArray[np.int8],
+        npt.NDArray[np.int8],
+        npt.NDArray[np.int8],
+        npt.NDArray[np.int8],
+    ]:
         player = self.game.players[agent]
         needs_to_discard = player in self.game.players_to_discard
         has_longest_road: bool = (
@@ -556,7 +716,7 @@ class PettingZooCatanEnv(AECEnv):
         vp: int = player.victory_points
 
         # swap empty with 3:1 harbor
-        harbors = np.zeros((len(Resource),), dtype=np.float32)
+        harbors = np.zeros((len(Resource),), dtype=np.int8)
         for harbor in player.harbours.values():
             # the 3:1 harbor will be index 0 instead of the empty resource
             if harbor.exchange_value == 3:
@@ -565,7 +725,7 @@ class PettingZooCatanEnv(AECEnv):
                 harbors[int(harbor.resource)] = 1
 
         # resources
-        resources = np.zeros((len(Resource.non_empty())), dtype=np.float32)
+        resources = np.zeros((len(Resource.non_empty())), dtype=np.int8)
         for res_idx, resource in enumerate(Resource.non_empty()):
             count = player.resources[resource]
             match count:
@@ -576,7 +736,7 @@ class PettingZooCatanEnv(AECEnv):
             resources[res_idx] = bucketed
 
         resource_production = np.zeros(
-            (len(Resource.non_empty()), 11), dtype=np.float32
+            (len(Resource.non_empty()), 11), dtype=np.int8
         )
 
         for tile in self.game.board.tiles:
@@ -599,38 +759,393 @@ class PettingZooCatanEnv(AECEnv):
                 production
             )
 
-        played_dev_cards = np.zeros((len(DevelopmentCard),), dtype=np.float32)
+        played_dev_cards = np.zeros((len(DevelopmentCard),), dtype=np.int8)
 
         played_dev_card_counts = Counter(player.visible_cards)
         for i, card in enumerate(DevelopmentCard):
             played_dev_cards[i] = played_dev_card_counts[card]
 
-        features = [
-            float(needs_to_discard),
-            float(has_longest_road),
-            float(len_player_longest_road),
-            float(has_largest_army),
-            float(army_size),
-            float(vp),
+        features = (
+            np.array([needs_to_discard], dtype=np.int8),
+            np.array([has_longest_road], dtype=np.int8),
+            np.int64(len_player_longest_road),
+            np.array([has_largest_army], dtype=np.int8),
+            np.int64(army_size),
+            np.int64(vp),
             harbors,
             resources,
             resource_production,
             played_dev_cards,
-        ]
+        )
 
         return features
 
-    def _get_unplayed_dev_cards_features(self, agent: PlayerId) -> npt.NDArray:
+    def _get_unplayed_dev_cards_features(
+        self, agent: PlayerId
+    ) -> npt.NDArray[np.int8]:
         player = self.game.players[agent]
-        unplayed_dev_cards = np.zeros(
-            (len(DevelopmentCard),), dtype=np.float32
-        )
+        unplayed_dev_cards = np.zeros((len(DevelopmentCard),), dtype=np.int8)
         unplayed_dev_card_counts = Counter(player.hidden_cards)
         for i, card in enumerate(DevelopmentCard):
             unplayed_dev_cards[i] = unplayed_dev_card_counts[card]
         return unplayed_dev_cards
 
-    def _get_hidden_dev_card_count_features(self, agent: PlayerId) -> float:
+    def _get_hidden_dev_card_count_features(self, agent: PlayerId) -> np.int64:
         player = self.game.players[agent]
 
-        return float(len(player.hidden_cards))
+        return np.int64(len(player.hidden_cards))
+
+    def _get_action_mask(self, agent: PlayerId) -> list[npt.NDArray[np.int8]]:
+        """
+        Will have a mask of 1s and 0s for each action head, where 1 is allowed and 0 is not.
+        """
+        player = self.game.players[agent]
+
+        mask_action_type = np.zeros(len(ActionTypes.in_use()), dtype=np.int8)
+        mask_tile = np.zeros(N_TILES, dtype=np.int8)
+        mask_corner = np.zeros(N_CORNERS, dtype=np.int8)
+        mask_edge = np.zeros(N_EDGES + 1, dtype=np.int8)
+        mask_dev_card = np.zeros(len(DevelopmentCard), dtype=np.int8)
+        mask_resource = np.zeros((2, len(Resource.non_empty())), dtype=np.int8)
+        mask_player = np.zeros(self.num_max_agents, dtype=np.int8)
+
+        # if players need to discard, they can only discard
+        if self.game.players_need_to_discard:
+            mask_action_type[ActionTypes.DiscardResource] = 1.0
+            # do not allow selection of resource that are empty
+            for i, resource in enumerate(Resource.non_empty()):
+                if player.resources[resource] > 0:
+                    # use 0 since first dim is the resource to discard
+                    mask_resource[0][i] = 1.0
+
+            return [
+                mask_action_type,
+                mask_tile,
+                mask_corner,
+                mask_edge,
+                mask_dev_card,
+                mask_resource,
+                mask_player,
+            ]
+
+        # setup game phase
+        if self.game.initial_placement_phase:
+            # if they haven't placed a settlement, or they are placing their second
+            if self.game.initial_settlements_placed[player.id] == 0 or (
+                self.game.initial_settlements_placed[player.id] == 1
+                and self.game.initial_roads_placed[player.id] == 1
+            ):
+                mask_action_type[ActionTypes.PlaceSettlement] = 1.0
+                mask_corner = self._valid_settlement(agent)
+            else:
+                mask_action_type[ActionTypes.PlaceRoad] = 1.0
+                # TODO: mask valid edges here
+                mask_edge = self._valid_road(agent)
+
+            return [
+                mask_action_type,
+                mask_tile,
+                mask_corner,
+                mask_edge,
+                mask_dev_card,
+                mask_resource,
+                mask_player,
+            ]
+
+        # rest of action types
+        done = False
+
+        if self.game.road_building_active[0]:
+            # using road building card, can only build roads
+            mask_action_type[ActionTypes.PlaceRoad] = 1.0
+            mask_edge = self._valid_road(agent)
+            done = True
+
+        elif self.game.just_moved_robber:
+            mask_action_type[ActionTypes.StealResource] = 1.0
+            mask_player = self._valid_steal(agent)
+            done = True
+
+        elif not self.game.dice_rolled_this_turn:
+            # can only roll or play dev cards
+            mask_action_type[ActionTypes.RollDice] = 1.0
+
+            if (
+                len(player.hidden_cards) > 0
+                and not self.game.played_development_card_this_turn
+            ):
+                mask_dev_card, mask_resource = self._valid_dev_cards(agent)
+            done = True
+        elif self.game.actions_this_turn > self.max_actions_per_turn:
+            # exceeded max actions, can only end turn
+            mask_action_type[ActionTypes.EndTurn] = 1.0
+            done = True
+
+        if done:
+            return [
+                mask_action_type,
+                mask_tile,
+                mask_corner,
+                mask_edge,
+                mask_dev_card,
+                mask_resource,
+                mask_player,
+            ]
+
+        # have already rolled the die, allowed to end turn now
+        mask_action_type[ActionTypes.EndTurn] = 1.0
+
+        resources = player.resources
+
+        # can place settlement
+        if (
+            resources[Resource.Wheat] > 0
+            and resources[Resource.Sheep] > 0
+            and resources[Resource.Wood] > 0
+            and resources[Resource.Brick] > 0
+            and self.game.building_bank["settlements"][player.id] > 0
+        ):
+            valid_corners = self._valid_settlement(agent)
+
+            if valid_corners.any():
+                mask_action_type[ActionTypes.PlaceSettlement] = 1.0
+                mask_corner = np.bitwise_or(mask_corner, valid_corners)
+
+        # upgrade to city
+        if (
+            resources[Resource.Wheat] >= 2
+            and resources[Resource.Ore] >= 3
+            and self.game.building_bank["cities"][player.id] > 0
+        ):
+            valid_corners = self._valid_city(agent)
+            if valid_corners.any():
+                mask_action_type[ActionTypes.UpgradeToCity] = 1.0
+                mask_corner = np.bitwise_or(mask_corner, valid_corners)
+
+        # place road
+        if resources[Resource.Wood] > 0 and resources[Resource.Brick] > 0:
+            valid_edges = self._valid_road(agent)
+            if valid_edges.any():
+                mask_action_type[ActionTypes.PlaceRoad] = 1.0
+                mask_edge = np.bitwise_or(mask_edge, valid_edges)
+
+        # buy dev card
+        if (
+            resources[Resource.Wheat] > 0
+            and resources[Resource.Sheep] > 0
+            and resources[Resource.Ore] > 0
+            and len(self.game.development_cards_pile) > 0
+        ):
+            valid_dev_card, valid_dev_resource = self._valid_dev_cards(agent)
+
+            if valid_dev_card.any():
+                mask_action_type[ActionTypes.BuyDevelopmentCard] = 1.0
+                mask_dev_card = np.bitwise_or(mask_dev_card, valid_dev_card)
+                # returns both dims of valid resources
+                mask_resource = np.bitwise_or(
+                    mask_resource, valid_dev_resource
+                )
+
+        # move robber
+        if self.game.can_move_robber:
+            mask_action_type[ActionTypes.MoveRobber] = 1.0
+            valid_tile = self._valid_robber_move(agent)
+            mask_tile = np.bitwise_or(mask_tile, valid_tile)
+
+        # port/bank trade
+        valid_res_desired, valid_res_trading = self._valid_exchange(agent)
+
+        if valid_res_desired.any() and valid_res_trading.any():
+            mask_action_type[ActionTypes.ExchangeResource] = 1.0
+            valid_res = np.vstack((valid_res_desired, valid_res_trading))
+            mask_resource = np.bitwise_or(mask_resource, valid_res)
+
+        return [
+            mask_action_type,
+            mask_tile,
+            mask_corner,
+            mask_edge,
+            mask_dev_card,
+            mask_resource,
+            mask_player,
+        ]
+
+    def _valid_settlement(self, agent: PlayerId) -> npt.NDArray[np.int8]:
+        player = self.game.players[agent]
+        valid_corners = np.zeros(N_CORNERS, dtype=np.int8)
+        for i, corner in enumerate(self.game.board.corners):
+            if corner.building is not None and corner.can_place_settlement(
+                player.id, initial_placement=self.game.initial_placement_phase
+            ):
+                valid_corners[i] = 1.0
+        return valid_corners
+
+    def _valid_road(self, agent: PlayerId) -> npt.NDArray[np.int8]:
+        player = self.game.players[agent]
+        valid_edges = np.zeros(N_EDGES + 1, dtype=np.int8)
+
+        after_second_settlement = False
+        second_settlement = None
+        at_least_one_valid = False
+
+        if (
+            self.game.initial_placement_phase
+            and self.game.initial_settlements_placed[player.id] == 2
+        ):  # if they are placing second road
+            after_second_settlement = True
+            second_settlement = self.game.initial_second_settlement_corners[
+                player.id
+            ]
+
+        for i, edge in enumerate(self.game.board.edges):
+            if edge.can_place_road(
+                player.id,
+                after_second_settlement=after_second_settlement,
+                second_settlement=second_settlement,
+            ):
+                valid_edges[i] = 1.0
+                at_least_one_valid = True
+
+        if self.game.road_building_active[0] and not at_least_one_valid:
+            # allow skipping road placement
+            valid_edges[-1] = 1.0
+
+        return valid_edges
+
+    def _valid_city(self, agent: PlayerId) -> npt.NDArray[np.int8]:
+        player = self.game.players[agent]
+        valid_corners = np.zeros(N_CORNERS, dtype=np.int8)
+
+        for i, corner in enumerate(self.game.board.corners):
+            if (
+                corner is not None
+                and corner.building is not None
+                and corner.building.type == BuildingType.Settlement
+                and corner.building.owner == player.id
+            ):
+                valid_corners[i] = 1.0
+
+        return valid_corners
+
+    def _valid_steal(self, agent: PlayerId) -> npt.NDArray[np.int8]:
+        valid_players = np.zeros(self.num_max_agents, dtype=np.int8)
+
+        robber_tile = self.game.board.robber_tile
+        for corner in robber_tile.corners.values():
+            if (
+                corner is not None
+                and corner.building is not None
+                and corner.building.owner != agent
+            ):
+                rel_pos = self._get_agent_rel_pos(agent, corner.building.owner)
+                valid_players[rel_pos] = 1.0
+
+        assert (
+            valid_players[0] == 0.0
+        ), "Cannot steal from self; something went wrong in masking."
+        return valid_players
+
+    def _valid_dev_cards(
+        self, agent: PlayerId
+    ) -> tuple[npt.NDArray[np.int8], npt.NDArray[np.int8]]:
+        player = self.game.players[agent]
+
+        valid_dev_card_type = np.zeros(len(DevelopmentCard), dtype=np.int8)
+        valid_dev_resource = np.ones(
+            (2, len(Resource.non_empty())), dtype=np.int8
+        )
+
+        for i, card in enumerate(DevelopmentCard):
+            count = player.hidden_cards.count(card)
+            if (
+                count > 0
+                and self.game.development_cards_bought_this_turn.count(card)
+                < count
+            ):
+                # must have resources left in bank when playing Year of Plenty
+                # everything else allowed
+                if (
+                    card != DevelopmentCard.YearOfPlenty
+                    or sum(self.game.resource_bank.values()) > 0
+                ):
+                    valid_dev_card_type[i] = 1.0
+
+        for i, resource in enumerate(Resource.non_empty()):
+
+            # if YearOfPlenty, need to have resources in bank
+            if (
+                valid_dev_card_type[DevelopmentCard.YearOfPlenty] == 1.0
+                and self.game.resource_bank[resource] <= 0
+            ):
+                valid_dev_resource[i] = 0.0
+
+        return valid_dev_card_type, valid_dev_resource
+
+    def _valid_robber_move(self, agent: PlayerId) -> npt.NDArray[np.int8]:
+        player = self.game.players[agent]
+        valid_tiles = np.zeros(N_TILES, dtype=np.int8)
+
+        for i, tile in enumerate(self.game.board.tiles):
+            # must have a building on the tile and not any buildings owned by you
+            # to move the robber there
+            if any(
+                (
+                    corner is not None
+                    and corner.building is not None
+                    and corner.building.owner != player
+                )
+                for corner in tile.corners.values()
+            ):
+                valid_tiles[i] = 1.0
+
+        return valid_tiles
+
+    def _valid_exchange(
+        self, agent: PlayerId
+    ) -> tuple[npt.NDArray[np.int8], npt.NDArray[np.int8]]:
+        player = self.game.players[agent]
+        valid_desired = np.zeros(len(Resource.non_empty()), dtype=np.int8)
+        valid_trading = np.zeros(len(Resource.non_empty()), dtype=np.int8)
+
+        # you are only allowed to request/desire a resource if you have:
+        # - 4 of one resource
+        # - 3/2 of a resource corresponding to a 3:1 or 2:1 port
+
+        has_3_1 = False
+        harbors_2_1 = set()
+
+        for harbor in player.harbours.values():
+            if harbor.exchange_value == 3:
+                has_3_1 = True
+            else:
+                harbors_2_1.add(harbor.resource)
+
+        for i, resource in enumerate(Resource.non_empty()):
+            count = player.resources[resource]
+
+            if count >= 4 or (count >= 3 and has_3_1):
+                valid_trading[i] = 1.0
+
+                # you can buy anything with if the bank has enough
+                for j, bank_count in enumerate(
+                    self.game.resource_bank.values()
+                ):
+                    if bank_count > 0:
+                        valid_desired[j] = 1.0
+
+            if count >= 2 and resource in harbors_2_1:
+                valid_trading[i] = 1.0
+                # can only buy the resource corresponding to the port
+                valid_desired[int(resource)] = 1.0  # type: ignore
+
+        return valid_desired, valid_trading
+
+    def _get_exchange_rate(self, agent: PlayerId, resource: Resource) -> int:
+        player = self.game.players[agent]
+        best = 4
+        for harbor in player.harbours.values():
+            if harbor.resource is None:
+                best = min(best, 3)
+            elif harbor.resource == resource:
+                best = min(best, 2)
+        return best

@@ -34,15 +34,10 @@ class Resource(IntEnum):
     def int_non_empty(self) -> int:
         return int(self) - 1
 
-    @staticmethod
-    def non_empty():
-        return [
-            Resource.Brick,
-            Resource.Wood,
-            Resource.Ore,
-            Resource.Sheep,
-            Resource.Wheat,
-        ]
+    @classmethod
+    def non_empty(cls):
+        """Provides a list of non-empty resources."""
+        return [res for res in cls if res != cls.Empty]
 
 
 class DevelopmentCard(IntEnum):
@@ -59,14 +54,33 @@ class ActionTypes(IntEnum):
     UpgradeToCity = 2
     BuyDevelopmentCard = 3
     PlayDevelopmentCard = 4
-    # ExchangeResource = 5
-    # ProposeTrade = 6
-    # RespondToOffer = 7
-    MoveRobber = 8
-    RollDice = 9
-    EndTurn = 10
-    StealResource = 11
-    DiscardResource = 12
+    ExchangeResource = 5
+    MoveRobber = 6
+    RollDice = 7
+    EndTurn = 8
+    StealResource = 9
+    DiscardResource = 10
+
+    # Removed from wrapper env with the new values shifted down
+    # but must stay for the game logic
+    ProposeTrade = 11
+    RespondToOffer = 12
+
+    @classmethod
+    def in_use(cls):
+        return [
+            cls.PlaceSettlement,
+            cls.PlaceRoad,
+            cls.UpgradeToCity,
+            cls.BuyDevelopmentCard,
+            cls.PlayDevelopmentCard,
+            cls.ExchangeResource,
+            cls.MoveRobber,
+            cls.RollDice,
+            cls.EndTurn,
+            cls.StealResource,
+            cls.DiscardResource,
+        ]
 
 
 TILE_ADJACENCY_INDS = [

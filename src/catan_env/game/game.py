@@ -20,7 +20,7 @@ from catan_env.game.utils import DFS
 from catan_env.ui.display import Display
 
 
-class Game():
+class Game:
     def __init__(
         self,
         board_config={},
@@ -100,12 +100,12 @@ class Game():
         }
 
         self.max_dev_cards_by_type: dict[DevelopmentCard, int] = {
-                DevelopmentCard.Knight: 14,
-                DevelopmentCard.VictoryPoint: 5,
-                DevelopmentCard.YearOfPlenty: 2,
-                DevelopmentCard.RoadBuilding: 2,
-                DevelopmentCard.Monopoly: 2,
-            }
+            DevelopmentCard.Knight: 14,
+            DevelopmentCard.VictoryPoint: 5,
+            DevelopmentCard.YearOfPlenty: 2,
+            DevelopmentCard.RoadBuilding: 2,
+            DevelopmentCard.Monopoly: 2,
+        }
         self.development_cards: list[DevelopmentCard] = [
             card
             for card, count in self.max_dev_cards_by_type.items()
@@ -142,7 +142,10 @@ class Game():
         self.must_use_development_card_ability = False
         self.must_respond_to_trade = False
         self.proposed_trade = None
-        self.road_building_active = [False, 0]  # active, num roads placed
+        self.road_building_active: list[bool | int] = [
+            False,
+            0,
+        ]  # active, num roads placed
         self.can_move_robber = False
         self.just_moved_robber = False
         self.players_need_to_discard = False
