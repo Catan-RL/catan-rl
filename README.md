@@ -43,3 +43,44 @@ NVIDIA T4 GPU
 8 GB RAM
 30 GB Disk Space
 ```
+
+Install Marllib in a separate env: 
+
+First, initalize the env and install PettingZoo dependencies: 
+```
+conda create -n marllib python=3.8
+conda activate marllib
+pip install pettingzoo==1.23.1
+pip install supersuit==3.9.0
+pip install pygame==2.3.0
+```
+Next, in a separate directory, clone the Marllib repo and run the following commands: 
+```
+git clone https://github.com/Replicable-MARL/MARLlib.git
+cd MARLlib
+pip install --upgrade pip
+```
+In Marllib's requirements.txt file, change the line: 
+```
+gym==0.20.0
+```
+to 
+```
+gym
+```
+then 
+```
+pip install -r requirements.txt
+```
+Next, we need to add a patch and install marllib
+```
+pip install protobuf==3.20.3
+cd MARLlib/marllib/patch
+python add_patch.py -y
+pip install marllib
+pip install gym==0.22.0
+```
+You should be able to run marllib example code using
+```
+python mappo_example.py
+```
