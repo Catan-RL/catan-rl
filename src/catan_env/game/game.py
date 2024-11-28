@@ -149,7 +149,7 @@ class Game:
         self.can_move_robber = False
         self.just_moved_robber = False
         self.players_need_to_discard = False
-        self.players_to_discard = []
+        self.players_to_discard: list[PlayerId] = []
 
         self.die_1 = None
         self.die_2 = None
@@ -298,6 +298,7 @@ class Game:
         if (
             player.resources[Resource.Wood] > 0
             and player.resources[Resource.Brick] > 0
+            and self.road_bank[player.id] > 0
         ):
             return True
         else:
@@ -318,6 +319,7 @@ class Game:
                 self.resource_bank[Resource.Brick] += 1
         self.board.insert_road(player.id, edge)
         player.roads.append(edge.id)
+        self.road_bank[player.id] -= 1
 
     def can_buy_city(self, player):
         if self.building_bank["cities"][player.id] > 0:

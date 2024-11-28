@@ -35,6 +35,10 @@ class Resource(IntEnum):
         return int(self) - 1
 
     @classmethod
+    def from_non_empty(cls, int) -> "Resource":
+        return cls(int + 1)
+
+    @classmethod
     def non_empty(cls):
         """Provides a list of non-empty resources."""
         return [res for res in cls if res != cls.Empty]
