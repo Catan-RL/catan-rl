@@ -1,15 +1,13 @@
-import copy
+import functools
 from collections import Counter, OrderedDict
 from typing import Any
 
 import gymnasium.spaces as spaces
 import numpy as np
 from numpy import typing as npt
-from pettingzoo.utils import agent_selector
 from pettingzoo.utils.env import AECEnv
 
 from catan_env.game.components.buildings import Building
-from catan_env.game.components.player import Player
 from catan_env.game.enums import (
     ActionTypes,
     BuildingType,
@@ -66,9 +64,9 @@ class PettingZooCatanEnv(AECEnv):
         self.rewards = {agent: 0 for agent in self.agents}
         self._cumulative_rewards = {agent: 0 for agent in self.agents}
         self.infos = {agent: {"log": ""} for agent in self.agents}
-
         self.observation_spaces = {
-            agent: self._get_obs_space(agent) for agent in self.agents
+            agent: self._get_obs_space_with_mask(agent)
+            for agent in self.agents
         }
 
         self.action_spaces = {
@@ -79,7 +77,14 @@ class PettingZooCatanEnv(AECEnv):
             agent: 0 for agent in self.agents
         }
 
-    def step(self, action: list[np.ndarray]) -> None:
+    def step(self, action: list[npt.NDArray]) -> None:
+        # print("Agent order:", self.game.player_order)
+        # print(
+        #     f"Agent: {self.agent_selection}, Last Agent: {self._is_last_agent()}"
+        # )
+        # print(f"Step Rewards: {self.rewards}")
+        # print(f"Cumulative Rewards: {self._cumulative_rewards}")
+
         if (
             self.terminations[self.agent_selection]
             or self.truncations[self.agent_selection]
@@ -87,14 +92,16 @@ class PettingZooCatanEnv(AECEnv):
             self._was_dead_step(None)
             return
 
-        # clear rewards from previous step
-        self._clear_rewards()
-
         # take the action
         translated_action = self._translate_action(action)
+        # print("Action:", translated_action)
+        # print("Untranslated Action:", action)
+        # print(self.game.players)
 
         valid_action, error = self.game.validate_action(translated_action)
         if not valid_action:
+            print(self.game.players[self.agent_selection].resources)
+
             raise RuntimeError(
                 f"Invalid action {translated_action}\nResulted in: {error}"
             )
@@ -103,7 +110,13 @@ class PettingZooCatanEnv(AECEnv):
         self.infos[self.agent_selection]["log"] = message
 
         # compute rewards
-        self._compute_rewards(translated_action)
+        if self._is_last_agent():
+            self._update_rewards(translated_action)
+        else:
+            # clear rewards from previous step
+            self._clear_rewards()
+
+        self._cumulative_rewards[self.agent_selection] = 0
         self._accumulate_rewards()
 
         # update vps
@@ -114,11 +127,18 @@ class PettingZooCatanEnv(AECEnv):
 
         if self._is_game_over():
             self.terminations = {agent: True for agent in self.agents}
-            self.truncations = {agent: True for agent in self.agents}
 
         # update agent selection, if applicable
         # note that the same agent might keep control for some time
-        self.agent_selection = self.game.players_go
+        self._update_agent_selection()
+
+    def _update_agent_selection(self) -> None:
+
+        # if a 7 was rolled, the game goes into 'discard' mode
+        if self.game.players_need_to_discard:
+            self.agent_selection = self.game.players_to_discard[0]
+        else:
+            self.agent_selection = self.game.players_go
 
     def observe(self, agent: PlayerId) -> dict[str, Any]:
         this_agent_space = (
@@ -126,19 +146,24 @@ class PettingZooCatanEnv(AECEnv):
             self._get_unplayed_dev_cards_features(agent),
         )
 
+        # we must use possible agents to ensure the observation space doesn't
+        # shrink while the game is ending and final rewards are being collected, causing an error
         other_agent_spaces = {
             str(self._get_agent_rel_pos(agent, agent_id)): (
                 *self._get_public_player_features(agent_id),
                 self._get_hidden_dev_card_count_features(agent_id),
             )
-            for agent_id in self.agents
+            for agent_id in self.possible_agents
             if agent_id != agent
         }
+        other_agent_spaces = dict(sorted(other_agent_spaces.items()))
+        if len(other_agent_spaces) != self.num_max_agents - 1:
+            print(self.agents)
+        assert (
+            len(other_agent_spaces) == self.num_max_agents - 1
+        ), "ERROR: Incorrect number of other agents"
 
-        action_mask = tuple(self._get_action_mask(agent))
-
-        # TODO: flatten this into a numpy array under the observation key
-        obs = OrderedDict(
+        unflat_obs = OrderedDict(
             {
                 "tile_features": self._get_tile_features(),
                 "corner_features": self._get_corner_features(agent),
@@ -146,16 +171,51 @@ class PettingZooCatanEnv(AECEnv):
                 "bank_features": self._get_bank_features(),
                 "this_agent": this_agent_space,
                 "other_agents": other_agent_spaces,
+            }
+        )
+
+        if not self._get_obs_space(agent).contains(unflat_obs):
+            self.print_obs(unflat_obs)  # type: ignore
+            print("ERROR: inner observation is not in observation space")
+
+        flat_obs = spaces.flatten(self._get_obs_space(agent), unflat_obs)
+
+        action_mask = tuple(self._get_action_mask(agent))
+        obs = OrderedDict(
+            {
+                "observation": flat_obs,
                 "action_mask": action_mask,
             }
         )
+
+        if not self.observation_space(agent).contains(obs):
+            self.print_obs(obs)  # type: ignore
+            raise ValueError("ERROR: Observation is not in observation space")
+
         return obs
 
+    @functools.lru_cache(maxsize=None)
     def action_space(self, agent: PlayerId) -> spaces.Space:
         return self.action_spaces[agent]
 
+    @functools.lru_cache(maxsize=None)
     def observation_space(self, agent: PlayerId) -> spaces.Space:
         return self.observation_spaces[agent]
+
+    def _is_last_agent(self) -> bool:
+        # we are only done if we aren't in discard mode and have gone through 1 full cycle
+        return (
+            not self.game.players_need_to_discard
+            and self.agent_selection == self.game.player_order[-1]
+        )
+
+    def _get_obs_space_with_mask(self, agent: PlayerId) -> spaces.Space:
+        return spaces.Dict(
+            {
+                "observation": self._get_flat_obs_space(agent),
+                "action_mask": self._get_action_space(agent),
+            }
+        )
 
     def _get_action_space(self, _agent: PlayerId) -> spaces.Space:
         """
@@ -264,17 +324,6 @@ class PettingZooCatanEnv(AECEnv):
             count of hidden dev cards - can be [0, 25]
         """
 
-        # tile_features = spaces.Tuple(
-        #     # TODO: do I need to make a deepcopy of this
-        #     [
-        #         # contains robber: True (1) or False (0)
-        #         spaces.MultiBinary(1),
-        #         spaces.Discrete(11, start=2),  # tile value: [2, 12]
-        #         spaces.Discrete(len(Resource)),  # resource type of tile
-        #     ]
-        #     * N_TILES
-        # )
-
         # tile_features is an (N_TILES, 3) array where:
         # - Column 0 represents whether the tile contains a robber (0 = No, 1 = Yes).
         # - Column 1 represents the tile value (integer range: 2 to 12).
@@ -284,16 +333,6 @@ class PettingZooCatanEnv(AECEnv):
             high=np.array([[1, 12, max(Resource)]] * N_TILES, dtype=np.int8),
             dtype=np.int8,
         )
-
-        # corner_features = spaces.Tuple(
-        #     [
-        #         # building type: settlement, city, or None
-        #         spaces.Discrete(len(BuildingType) + 1),
-        #         spaces.Discrete(self.num_max_agents + 1),  # owner
-        #     ]
-        #     * N_CORNERS
-        # )
-        #
 
         # corner_features is an (N_CORNERS, 2) array where:
         # - Column 0 represents building type (0 = None, 1...len(BuildingType)).
@@ -307,14 +346,6 @@ class PettingZooCatanEnv(AECEnv):
             dtype=np.int8,
         )
 
-        # edge_features = spaces.Tuple(
-        #     [
-        #         # road owner, or None for no road
-        #         spaces.Discrete(self.num_max_agents + 1)
-        #     ]
-        #     * N_EDGES
-        # )
-
         # edge_features is an (N_EDGES, 1) array where:
         # - Column 0 represents the road owner (0 = None, 1...self.num_max_agents).
         edge_features = spaces.Box(
@@ -325,17 +356,12 @@ class PettingZooCatanEnv(AECEnv):
             dtype=np.int8,
         )
 
-        # bank; subtract 1 for empty
-        # bank = spaces.MultiDiscrete(
-        #     [6] * (len(Resource) - 1 + int(self.enable_dev_cards))
-        # )
-
         # bank is a (len(Resource) - 1 + int(self.enable_dev_cards),) array where:
         # - Each element represents the quantity of a resource or development card (range: 0 to 5).
         bank = spaces.Box(
             low=0,
             high=5,
-            shape=(len(Resource) - 1 + int(self.enable_dev_cards), 1),
+            shape=(len(Resource.non_empty()) + int(self.enable_dev_cards), 1),
             dtype=np.int8,
         )
 
@@ -345,9 +371,11 @@ class PettingZooCatanEnv(AECEnv):
         public_player_space: list[spaces.Space] = [
             spaces.MultiBinary(1),  # need to discard
             spaces.MultiBinary(1),  # has longest road
-            spaces.Discrete(15),  # len of agent's longest road
+            spaces.Discrete(16),  # len of agent's longest road
             spaces.MultiBinary(1),  # has largest army
-            spaces.Discrete(14),  # size of agent's army
+            spaces.Discrete(
+                self.game.max_dev_cards_by_type[DevelopmentCard.Knight] + 1
+            ),  # size of agent's army
             spaces.Discrete(11),  # agent's VPs
             # Harbors: 1 for each resource type (empty is replaced with 3:1 harbor)
             spaces.MultiBinary(len(Resource)),
@@ -394,9 +422,6 @@ class PettingZooCatanEnv(AECEnv):
             }
         )
 
-        action_mask = self._get_action_space(_agent)
-
-        # TODO: flatten this into a numpy array under the observation key
         obs = spaces.Dict(
             {
                 "tile_features": tile_features,
@@ -405,7 +430,6 @@ class PettingZooCatanEnv(AECEnv):
                 "bank_features": bank,
                 "this_agent": this_agent_space,
                 "other_agents": other_agent_spaces,
-                "action_mask": action_mask,
             }
         )
 
@@ -445,36 +469,38 @@ class PettingZooCatanEnv(AECEnv):
 
                 match card_type:
                     case DevelopmentCard.YearOfPlenty:
-                        translated["resource_1"] = Resource(
-                            head_resource[0].argmax().item()
+                        translated["resource_1"] = Resource.from_non_empty(
+                            head_resource[0, :].argmax().item()
                         )
-                        translated["resource_2"] = Resource(
-                            head_resource[1].argmax().item()
+                        translated["resource_2"] = Resource.from_non_empty(
+                            head_resource[1, :].argmax().item()
                         )
                     case DevelopmentCard.Monopoly:
-                        translated["resource"] = Resource(
-                            head_resource[0].argmax().item()
+                        translated["resource"] = Resource.from_non_empty(
+                            head_resource[0, :].argmax().item()
                         )
 
             case ActionTypes.StealResource:
-                rel_pos = head_player[0].argmax().item()
+                rel_pos = head_player.argmax().item()
                 translated["target"] = self._get_agent_from_rel_pos(
                     self.agent_selection, rel_pos
                 )
             case ActionTypes.DiscardResource:
-                translated["resource"] = Resource(
-                    head_resource[0].argmax().item()
-                )
+                translated["resources"] = [
+                    Resource.from_non_empty(
+                        head_resource[0, :].argmax().item()
+                    )
+                ]
 
             case ActionTypes.ExchangeResource:
-                translated["desired_resource"] = Resource(
-                    head_resource[0].argmax().item()
+                translated["desired_resource"] = Resource.from_non_empty(
+                    head_resource[0, :].argmax().item()
                 )
-                translated["trading_resource"] = Resource(
-                    head_resource[1].argmax().item()
+                translated["trading_resource"] = Resource.from_non_empty(
+                    head_resource[1, :].argmax().item()
                 )
                 translated["exchange_rate"] = self._get_exchange_rate(
-                    self.agent_selection, translated["desired_resource"]
+                    self.agent_selection, translated["trading_resource"]
                 )
 
             case _:
@@ -489,8 +515,8 @@ class PettingZooCatanEnv(AECEnv):
             for player in self.game.players.values()
         )
 
-    def _compute_rewards(self, action: dict[str, Any]) -> None:
-        rewards = {agent: 0.0 for agent in self.agents}
+    def _update_rewards(self, action: dict[str, Any]) -> None:
+        step_rewards = {agent: 0.0 for agent in self.agents}
 
         # check for a winner
         winner: PlayerId | None = None
@@ -501,10 +527,10 @@ class PettingZooCatanEnv(AECEnv):
 
         # reward the winner, punish the losers
         if winner is not None:
-            rewards[winner] = 500
+            step_rewards[winner] = 500
             for agent in self.agents:
                 if agent != winner:
-                    rewards[agent] = -100
+                    step_rewards[agent] = -100
 
         curr_player_reward = 0.0
         curr_player = self.game.players[self.agent_selection]
@@ -515,6 +541,7 @@ class PettingZooCatanEnv(AECEnv):
                 curr_player.victory_points - self._player_vps[curr_player.id]
             )
         else:
+            # TODO: seems to be a bug thinking lost VPs when they shouldn't be
             curr_player_reward -= 5
 
         match action["type"]:
@@ -529,9 +556,9 @@ class PettingZooCatanEnv(AECEnv):
             case ActionTypes.UpgradeToCity:
                 curr_player_reward += 3
 
-        rewards[curr_player.id] = curr_player_reward
+        step_rewards[curr_player.id] = curr_player_reward
 
-        self.rewards = rewards
+        self.rewards = step_rewards
 
     def _get_agent_rel_pos(
         self, curr_agent: PlayerId, target_agent: PlayerId
@@ -714,6 +741,8 @@ class PettingZooCatanEnv(AECEnv):
         )
         army_size: int = self.game.current_army_size[player.id]
         vp: int = player.victory_points
+        # prevent vp from increasing above 10 when game is over to avoid observation space overflows
+        vp = min(vp, 10)
 
         # swap empty with 3:1 harbor
         harbors = np.zeros((len(Resource),), dtype=np.int8)
@@ -839,7 +868,6 @@ class PettingZooCatanEnv(AECEnv):
                 mask_corner = self._valid_settlement(agent)
             else:
                 mask_action_type[ActionTypes.PlaceRoad] = 1.0
-                # TODO: mask valid edges here
                 mask_edge = self._valid_road(agent)
 
             return [
@@ -923,7 +951,11 @@ class PettingZooCatanEnv(AECEnv):
                 mask_corner = np.bitwise_or(mask_corner, valid_corners)
 
         # place road
-        if resources[Resource.Wood] > 0 and resources[Resource.Brick] > 0:
+        if (
+            resources[Resource.Wood] > 0
+            and resources[Resource.Brick] > 0
+            and self.game.road_bank[player.id] > 0
+        ):
             valid_edges = self._valid_road(agent)
             if valid_edges.any():
                 mask_action_type[ActionTypes.PlaceRoad] = 1.0
@@ -974,7 +1006,7 @@ class PettingZooCatanEnv(AECEnv):
         player = self.game.players[agent]
         valid_corners = np.zeros(N_CORNERS, dtype=np.int8)
         for i, corner in enumerate(self.game.board.corners):
-            if corner.building is not None and corner.can_place_settlement(
+            if corner.can_place_settlement(
                 player.id, initial_placement=self.game.initial_placement_phase
             ):
                 valid_corners[i] = 1.0
@@ -1111,41 +1143,44 @@ class PettingZooCatanEnv(AECEnv):
         # - 4 of one resource
         # - 3/2 of a resource corresponding to a 3:1 or 2:1 port
 
-        has_3_1 = False
-        harbors_2_1 = set()
-
-        for harbor in player.harbours.values():
-            if harbor.exchange_value == 3:
-                has_3_1 = True
-            else:
-                harbors_2_1.add(harbor.resource)
+        # you can desire anything if the bank has enough
+        for i, resource in enumerate(Resource.non_empty()):
+            if self.game.resource_bank[resource] > 0:
+                valid_desired[i] = 1.0
 
         for i, resource in enumerate(Resource.non_empty()):
             count = player.resources[resource]
+            exchange_rate = self._get_exchange_rate(agent, resource)
 
-            if count >= 4 or (count >= 3 and has_3_1):
+            if count >= exchange_rate:
                 valid_trading[i] = 1.0
-
-                # you can buy anything with if the bank has enough
-                for j, bank_count in enumerate(
-                    self.game.resource_bank.values()
-                ):
-                    if bank_count > 0:
-                        valid_desired[j] = 1.0
-
-            if count >= 2 and resource in harbors_2_1:
-                valid_trading[i] = 1.0
-                # can only buy the resource corresponding to the port
-                valid_desired[int(resource)] = 1.0  # type: ignore
 
         return valid_desired, valid_trading
 
     def _get_exchange_rate(self, agent: PlayerId, resource: Resource) -> int:
         player = self.game.players[agent]
-        best = 4
+        best = 4  # exchange with bank
         for harbor in player.harbours.values():
             if harbor.resource is None:
                 best = min(best, 3)
             elif harbor.resource == resource:
                 best = min(best, 2)
         return best
+
+    @staticmethod
+    def print_obs(obs: spaces.Space | npt.NDArray | tuple | dict) -> None:
+        if isinstance(obs, np.ndarray):
+            if np.ndim(obs) == 0:  # type: ignore
+                print(obs)  # type: ignore
+            else:
+                print(obs.shape)
+        elif isinstance(obs, dict):
+            for k, v in obs.items():
+                print(k)  # type: ignore
+                PettingZooCatanEnv.print_obs(v)  # type: ignore
+        elif isinstance(obs, tuple):
+            print(len(obs))  # type: ignore
+            for x in obs:
+                print(x.shape)  # type: ignore
+        else:
+            print("WEIRD", obs)  # type: ignore
