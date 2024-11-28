@@ -2,8 +2,8 @@ import copy
 
 import numpy as np
 
-from game.enums import ActionTypes, BuildingType, DevelopmentCard, PlayerId, Resource
-from game.game import Game
+from catan_env.game.enums import ActionTypes, BuildingType, DevelopmentCard, PlayerId, Resource
+from catan_env.game.game import Game
 
 N_CORNERS = 54
 N_EDGES = 72

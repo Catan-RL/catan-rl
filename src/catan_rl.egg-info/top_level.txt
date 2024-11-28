@@ -1,2 +1,2 @@
+catan_agent
 catan_env
-catan_rl
