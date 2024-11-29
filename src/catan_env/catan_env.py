@@ -21,8 +21,14 @@ N_CORNERS = 54
 N_EDGES = 72
 N_TILES = 19
 
+# TODO:
+# - set up logging
+# - implement rendering
+# - debug stuck game with > 100k steps without ending
+
 
 class PettingZooCatanEnv(AECEnv):
+    # TODO: implement rendering
     metadata = {"render.modes": ["human"]}
 
     def __init__(
@@ -37,6 +43,7 @@ class PettingZooCatanEnv(AECEnv):
         super().__init__()
 
         self.enable_dev_cards: bool = enable_dev_cards
+        # TODO: replace max actions per turn with max number of turns total
         self.max_actions_per_turn: int = max_actions_per_turn
 
         self.game: Game = Game(
@@ -77,7 +84,15 @@ class PettingZooCatanEnv(AECEnv):
             agent: 0 for agent in self.agents
         }
 
+        print(f"Restting game with {self.num_max_agents} players")
+        print(
+            "Observation space as follows: each agent has observation array of shape: "
+            f"{spaces.flatdim(self._get_flat_obs_space(self.agents[0]))}\n"
+            f"and an action mask and action space of shape: {spaces.flatdim(self._get_action_space(self.agents[0]))}\n"
+        )
+
     def step(self, action: list[npt.NDArray]) -> None:
+
         # print("Agent order:", self.game.player_order)
         # print(
         #     f"Agent: {self.agent_selection}, Last Agent: {self._is_last_agent()}"
