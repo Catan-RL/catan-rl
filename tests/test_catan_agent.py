@@ -14,5 +14,5 @@ if __name__ == "__main__":
     
     entropy_coef = args.entropy_coef_start
 
-    
+    agent.entropy_coef
 

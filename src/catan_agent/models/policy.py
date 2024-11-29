@@ -249,7 +249,7 @@ class SettlersAgentPolicy(nn.Module):
                     )
                 ]
         obs["tile_representations"] = torch.tensor(
-            obs["tile_representations"],
+            np.array(obs["tile_representations"]),
             dtype=torch.float32,
             device=self.dummy_param.device,
         )
