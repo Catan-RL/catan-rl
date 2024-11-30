@@ -2,8 +2,8 @@ import copy
 
 import numpy as np
 
-from game.enums import ActionTypes, BuildingType, DevelopmentCard, PlayerId, Resource
-from game.game import Game
+from catan_env.game.enums import ActionTypes, BuildingType, DevelopmentCard, PlayerId, Resource
+from catan_env.game.game import Game
 
 N_CORNERS = 54
 N_EDGES = 72
@@ -223,12 +223,7 @@ class EnvWrapper(object):
             np.ones((N_EDGES + 1,)),  # build road head
             np.ones((N_TILES,)),  # move robber head
             np.ones((len(DevelopmentCard),)),  # play dev card head
-            np.ones((2,)),  # accept/reject head
             np.ones((3, 3)),  # player head
-            np.ones((6,)),  # propose trade head
-            np.ones((6,)),  # propose trade receive head
-            np.ones((4, 5)),  # exchange this res head
-            np.ones((5,)),  # receive this res head
             np.ones((5,)),  # discard resource head
         ]
         if self.game.players_need_to_discard:
