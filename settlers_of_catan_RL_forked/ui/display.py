@@ -762,13 +762,8 @@ class Display(object):
         y2 = 105
         y3 = 135
         next_player = self.game.players[player.inverse_player_lookup["next"]]
-        for res in [
-            Resource.Wood,
-            Resource.Brick,
-            Resource.Sheep,
-            Resource.Wheat,
-            Resource.Ore,
-        ]:
+        for res in [Resource.Wood, Resource.Brick, Resource.Sheep,
+                    Resource.Wheat, Resource.Ore]:
             actual_text = str(next_player.resources[res])
             self.screen.blit(
                 self.count_font.render(actual_text, False, (255, 255, 255)),
@@ -803,13 +798,8 @@ class Display(object):
         y2 = 255
         y3 = 285
         next_player = self.game.players[player.inverse_player_lookup["next_next"]]
-        for res in [
-            Resource.Wood,
-            Resource.Brick,
-            Resource.Sheep,
-            Resource.Wheat,
-            Resource.Ore,
-        ]:
+        for res in [Resource.Wood, Resource.Brick, Resource.Sheep,
+                    Resource.Wheat, Resource.Ore]:
             actual_text = str(next_player.resources[res])
             self.screen.blit(
                 self.count_font.render(actual_text, False, (255, 255, 255)),
@@ -842,13 +832,8 @@ class Display(object):
         y2 = 405
         y3 = 435
         next_player = self.game.players[player.inverse_player_lookup["next_next_next"]]
-        for res in [
-            Resource.Wood,
-            Resource.Brick,
-            Resource.Sheep,
-            Resource.Wheat,
-            Resource.Ore,
-        ]:
+        for res in [Resource.Wood, Resource.Brick, Resource.Sheep,
+                    Resource.Wheat, Resource.Ore]:
             actual_text = str(next_player.resources[res])
             self.screen.blit(
                 self.count_font.render(actual_text, False, (255, 255, 255)),
@@ -1298,14 +1283,10 @@ class Display(object):
         thinking_text = self.thinking_font.render("THINKING...", False, (255, 255, 255))
         self.screen.blit(thinking_text, (30, self.screen.get_height() - 200))
 
-
     def mouse_pos_in_bounds(self, lbx, ubx, lby, uby):
-        """ Helper function.
-        lb stands for lower bound, ub stands for upper bound.
-        """
+        """lb stands for lower bound, ub stands for upper bound."""
         mp = pygame.mouse.get_pos()
         return mp[0] > lbx and mp[0] < ubx and mp[1] > lby and mp[1] < uby
-
 
     def validate_action(self, action, corner=None, edge=None, reset_trade=False):
         valid_action, error = self.game.validate_action(
@@ -1400,7 +1381,7 @@ class Display(object):
                     x2 = x1 + self.building_width
                     y1 = corner_pos[1] - self.building_height // 2
                     y2 = y1 + self.building_height
-                    if (self.mouse_pos_in_bounds(x1, x2, y1, y2)):
+                    if self.mouse_pos_in_bounds(x1, x2, y1, y2):
                         pygame.draw.rect(
                             self.screen,
                             (255, 255, 255),
@@ -1433,19 +1414,19 @@ class Display(object):
                             action = {"type": ActionTypes.PlaceRoad, "edge": edge.id}
                             self.validate_action(action, edge=edge)
 
-            if (self.mouse_pos_in_bounds(914, 1093, 323, 375)):
+            if self.mouse_pos_in_bounds(914, 1093, 323, 375):
                 if mouse_click:
                     action = {"type": ActionTypes.RollDice}
                     self.validate_action(action)
-            elif (self.mouse_pos_in_bounds(914, 1093, 382, 433)):
+            elif self.mouse_pos_in_bounds(914, 1093, 382, 433):
                 if mouse_click:
                     action = {"type": ActionTypes.EndTurn}
                     self.validate_action(action)
-            elif (self.mouse_pos_in_bounds(924, 1127, 445, 485)):
+            elif self.mouse_pos_in_bounds(924, 1127, 445, 485):
                 if mouse_click:
                     action = {"type": ActionTypes.BuyDevelopmentCard}
                     self.validate_action(action)
-            elif (self.mouse_pos_in_bounds(1005, 1128, 523, 600)):
+            elif self.mouse_pos_in_bounds(1005, 1128, 523, 600):
                 points = [(1005, 523), (1128, 523), (1128, 600), (1005, 600)]
                 draw_polygon_alpha(self.screen, (255, 255, 255, 125), points)
                 if mouse_click:
@@ -1454,7 +1435,7 @@ class Display(object):
                         "card": DevelopmentCard.Knight,
                     }
                     self.validate_action(action)
-            elif (self.mouse_pos_in_bounds(1141, 1260, 523, 600)):
+            elif self.mouse_pos_in_bounds(1141, 1260, 523, 600):
                 points = [(1141, 523), (1260, 523), (1260, 600), (1141, 600)]
                 draw_polygon_alpha(self.screen, (255, 255, 255, 125), points)
                 if mouse_click:
@@ -1463,7 +1444,7 @@ class Display(object):
                         "card": DevelopmentCard.VictoryPoint,
                     }
                     self.validate_action(action)
-            elif (self.mouse_pos_in_bounds(1276, 1395, 523, 600)):
+            elif self.mouse_pos_in_bounds(1276, 1395, 523, 600):
                 points = [(1276, 523), (1395, 523), (1395, 600), (1276, 600)]
                 draw_polygon_alpha(self.screen, (255, 255, 255, 125), points)
                 if mouse_click:
@@ -1472,7 +1453,7 @@ class Display(object):
                         "card": DevelopmentCard.RoadBuilding,
                     }
                     self.validate_action(action)
-            elif (self.mouse_pos_in_bounds(1412, 1531, 523, 600)):
+            elif self.mouse_pos_in_bounds(1412, 1531, 523, 600):
                 points = [(1412, 523), (1531, 523), (1531, 600), (1412, 600)]
                 draw_polygon_alpha(self.screen, (255, 255, 255, 125), points)
                 if mouse_click:
@@ -1494,7 +1475,7 @@ class Display(object):
                         "resource_2": resource_2,
                     }
                     self.validate_action(action)
-            elif (self.mouse_pos_in_bounds(1547, 1666, 523, 600)):
+            elif self.mouse_pos_in_bounds(1547, 1666, 523, 600):
                 points = [(1547, 523), (1666, 523), (1666, 600), (1547, 600)]
                 draw_polygon_alpha(self.screen, (255, 255, 255, 125), points)
                 if mouse_click:
@@ -1514,62 +1495,59 @@ class Display(object):
                         "resource": resource,
                     }
                     self.validate_action(action)
-            elif (self.mouse_pos_in_bounds(1440, (1664 + 45), 456, 494)):
+            elif self.mouse_pos_in_bounds(1440, (1664 + 45), 456, 494):
                 for res in [Resource.Wood, Resource.Brick, Resource.Sheep,
                             Resource.Wheat, Resource.Ore]:
                     rect = self.development_card_res_boxes[res]
-                    if (self.mouse_pos_in_bounds(rect[0], rect[0] + rect[2],
-                                                 rect[1], rect[1] + rect[3])):
+                    if self.mouse_pos_in_bounds(rect[0], rect[0] + rect[2],
+                                                rect[1], rect[1] + rect[3]):
                         pygame.draw.rect(self.screen, (255, 255, 255), rect, width=4)
                         if mouse_click:
                             if res in self.active_development_res_boxes:
                                 self.active_development_res_boxes.remove(res)
+                            elif len(self.active_development_res_boxes) < 2:
+                                self.active_development_res_boxes.append(res)
                             else:
-                                if len(self.active_development_res_boxes) < 2:
-                                    self.active_development_res_boxes.append(res)
-                                else:
-                                    messagebox.showinfo(
-                                        "Error",
-                                        "No development card involves more than 2 resources",
-                                    )
+                                messagebox.showinfo(
+                                    "Error",
+                                    "No development card involves more than 2 resources",
+                                )
                         break
-            elif (self.mouse_pos_in_bounds(989, (1233 + 45), 767, 805)):
+            elif self.mouse_pos_in_bounds(989, (1233 + 45), 767, 805):
                 for res in [Resource.Wood, Resource.Brick, Resource.Sheep,
                             Resource.Wheat, Resource.Ore]:
                     rect = self.harbour_trade_res_boxes[res]
-                    if (self.mouse_pos_in_bounds(rect[0], rect[0] + rect[2],
-                                                 rect[1], rect[1] + rect[3])):
+                    if self.mouse_pos_in_bounds(rect[0], rect[0] + rect[2],
+                                                rect[1], rect[1] + rect[3]):
                         pygame.draw.rect(self.screen, (255, 255, 255), rect, width=4)
                         if mouse_click:
                             if res in self.active_harbour_trade_res:
                                 self.active_harbour_trade_res.remove(res)
+                            elif len(self.active_harbour_trade_res) == 0:
+                                self.active_harbour_trade_res.append(res)
                             else:
-                                if len(self.active_harbour_trade_res) == 0:
-                                    self.active_harbour_trade_res.append(res)
-                                else:
-                                    messagebox.showinfo(
-                                        "Error",
-                                        "Can only select one resource at a time.",
-                                    )
-            elif (self.mouse_pos_in_bounds(989, (1233 + 45), 840, 878)):
+                                messagebox.showinfo(
+                                    "Error",
+                                    "Can only select one resource at a time.",
+                                )
+            elif self.mouse_pos_in_bounds(989, (1233 + 45), 840, 878):
                 for res in [Resource.Wood, Resource.Brick, Resource.Sheep,
                             Resource.Wheat, Resource.Ore]:
                     rect = self.harbour_receive_res_boxes[res]
-                    if (self.mouse_pos_in_bounds(rect[0], rect[0] + rect[2],
-                                                 rect[1], rect[1] + rect[3])):
+                    if self.mouse_pos_in_bounds(rect[0], rect[0] + rect[2],
+                                                rect[1], rect[1] + rect[3]):
                         pygame.draw.rect(self.screen, (255, 255, 255), rect, width=4)
                         if mouse_click:
                             if res in self.active_harbour_receive_res:
                                 self.active_harbour_receive_res.remove(res)
+                            elif len(self.active_harbour_receive_res) == 0:
+                                self.active_harbour_receive_res.append(res)
                             else:
-                                if len(self.active_harbour_receive_res) == 0:
-                                    self.active_harbour_receive_res.append(res)
-                                else:
-                                    messagebox.showinfo(
-                                        "Error",
-                                        "Can only select one resource at a time.",
-                                    )
-            elif (self.mouse_pos_in_bounds(970, 1380, 666, 726)):
+                                messagebox.showinfo(
+                                    "Error",
+                                    "Can only select one resource at a time.",
+                                )
+            elif self.mouse_pos_in_bounds(970, 1380, 666, 726):
                 for res in [Resource.Wood, Resource.Brick, Resource.Sheep,
                             Resource.Wheat, Resource.Ore, None]:
                     centre = self.harbour_select_circles[res][0]
@@ -1583,15 +1561,14 @@ class Display(object):
                         if mouse_click:
                             if res in self.active_harbour:
                                 self.active_harbour.remove(res)
+                            elif len(self.active_harbour) == 0:
+                                self.active_harbour.append(res)
                             else:
-                                if len(self.active_harbour) == 0:
-                                    self.active_harbour.append(res)
-                                else:
-                                    messagebox.showinfo(
-                                        "Error",
-                                        "Can only select one harbour at a time.",
-                                    )
-            elif (self.mouse_pos_in_bounds(1058, 1203, 899, 934)):
+                                messagebox.showinfo(
+                                    "Error",
+                                    "Can only select one harbour at a time.",
+                                )
+            elif self.mouse_pos_in_bounds(1058, 1203, 899, 934):
                 if mouse_click:
                     if len(self.active_harbour_trade_res) == 0:
                         messagebox.showinfo(
@@ -1614,12 +1591,12 @@ class Display(object):
                         action["desired_resource"] = self.active_harbour_receive_res[0]
                         action["trading_resource"] = self.active_harbour_trade_res[0]
                         self.validate_action(action)
-            elif (self.mouse_pos_in_bounds(1390, 1562, 646, 683)):
+            elif self.mouse_pos_in_bounds(1390, 1562, 646, 683):
                 for player_id in [PlayerId.White, PlayerId.Red,
                                   PlayerId.Orange, PlayerId.Blue]:
                     box = self.player_boxes[player_id]
-                    if (self.mouse_pos_in_bounds(box[0], (box[0] + box[2]),
-                                                 box[1], (box[1] + box[3]))):
+                    if self.mouse_pos_in_bounds(box[0], (box[0] + box[2]),
+                                                box[1], (box[1] + box[3])):
                         pygame.draw.rect(self.screen, (255, 255, 255), box, width=4)
                         if mouse_click:
                             if self.game.must_respond_to_trade:
@@ -1629,7 +1606,7 @@ class Display(object):
                                 )
                             else:
                                 self.active_other_player = [player_id]
-            elif (self.mouse_pos_in_bounds(1457, 1575, 932, 963)):
+            elif self.mouse_pos_in_bounds(1457, 1575, 932, 963):
                 if mouse_click:
                     if self.game.must_respond_to_trade:
                         messagebox.showinfo(
@@ -1638,7 +1615,7 @@ class Display(object):
                     else:
                         self.active_receive_res = []
                         self.active_trade_res = []
-            elif (self.mouse_pos_in_bounds(1585, 1700, 932, 963)):
+            elif self.mouse_pos_in_bounds(1585, 1700, 932, 963):
                 if mouse_click:
                     if self.game.players_need_to_discard == False:
                         messagebox.showinfo(
@@ -1650,7 +1627,7 @@ class Display(object):
                             "resources": copy.copy(self.active_trade_res),
                         }
                         self.validate_action(action, reset_trade=True)
-            elif (self.mouse_pos_in_bounds(1437, 1565, 687, 721)):
+            elif self.mouse_pos_in_bounds(1437, 1565, 687, 721):
                 if mouse_click:
                     if len(self.active_other_player) == 0:
                         messagebox.showinfo(
@@ -1662,7 +1639,7 @@ class Display(object):
                             "target": self.active_other_player[0],
                         }
                         self.validate_action(action)
-            elif (self.mouse_pos_in_bounds(1577, 1705, 687, 721)):
+            elif self.mouse_pos_in_bounds(1577, 1705, 687, 721):
                 if mouse_click:
                     if self.game.must_respond_to_trade:
                         action = {
@@ -1670,7 +1647,7 @@ class Display(object):
                             "response": "reject",
                         }
                         self.validate_action(action)
-            elif (self.mouse_pos_in_bounds(1577, 1705, 648, 682)):
+            elif self.mouse_pos_in_bounds(1577, 1705, 648, 682):
                 if mouse_click:
                     if self.game.must_respond_to_trade:
                         action = {
@@ -1678,33 +1655,32 @@ class Display(object):
                             "response": "accept",
                         }
                         self.validate_action(action)
+                    elif len(self.active_trade_res) == 0:
+                        messagebox.showinfo(
+                            "Error", "Must choose resources to trade."
+                        )
+                    elif len(self.active_receive_res) == 0:
+                        messagebox.showinfo(
+                            "Error", "Must propose resources to receive."
+                        )
+                    elif len(self.active_other_player) == 0:
+                        messagebox.showinfo(
+                            "Error", "Must choose a player to propose the trade to."
+                        )
+                    elif self.active_other_player[0] == players_go.id:
+                        messagebox.showinfo("Error", "Cannot trade with yourself.")
                     else:
-                        if len(self.active_trade_res) == 0:
-                            messagebox.showinfo(
-                                "Error", "Must choose resources to trade."
-                            )
-                        elif len(self.active_receive_res) == 0:
-                            messagebox.showinfo(
-                                "Error", "Must propose resources to receive."
-                            )
-                        elif len(self.active_other_player) == 0:
-                            messagebox.showinfo(
-                                "Error", "Must choose a player to propose the trade to."
-                            )
-                        elif self.active_other_player[0] == players_go.id:
-                            messagebox.showinfo("Error", "Cannot trade with yourself.")
-                        else:
-                            action = {
-                                "type": ActionTypes.ProposeTrade,
-                                "player_proposing": players_go.id,
-                                "player_proposing_res": self.active_trade_res,
-                                "target_player": self.active_other_player[0],
-                                "target_player_res": self.active_receive_res,
-                            }
-                            self.validate_action(action)
-            elif (self.mouse_pos_in_bounds(30, 180,
-                                           self.screen.get_height() - 180,
-                                           self.screen.get_height() - 30)):
+                        action = {
+                            "type": ActionTypes.ProposeTrade,
+                            "player_proposing": players_go.id,
+                            "player_proposing_res": self.active_trade_res,
+                            "target_player": self.active_other_player[0],
+                            "target_player_res": self.active_receive_res,
+                        }
+                        self.validate_action(action)
+            elif self.mouse_pos_in_bounds(30, 180,
+                                          self.screen.get_height() - 180,
+                                          self.screen.get_height() - 30):
                 if mouse_click:
                     self.step_AI()
             else:
@@ -1712,8 +1688,8 @@ class Display(object):
                             Resource.Wheat, Resource.Ore]:
                     box = self.trade_player_resource_boxes[res]
                     box_2 = self.receive_player_resource_boxes[res]
-                    if (self.mouse_pos_in_bounds(box[0], (box[0] + box[2]),
-                                                 box[1], (box[1] + box[3]))):
+                    if self.mouse_pos_in_bounds(box[0], (box[0] + box[2]),
+                                                box[1], (box[1] + box[3])):
                         pygame.draw.rect(self.screen, (255, 255, 255), box, width=4)
                         if mouse_click:
                             if self.game.must_respond_to_trade:
@@ -1721,19 +1697,18 @@ class Display(object):
                                     "Error",
                                     "Cannot modify proposed trade. Accept or reject.",
                                 )
+                            elif (
+                                len(self.active_trade_res)
+                                < self.game.max_trade_resources
+                            ):
+                                self.active_trade_res.append(res)
                             else:
-                                if (
-                                    len(self.active_trade_res)
-                                    < self.game.max_trade_resources
-                                ):
-                                    self.active_trade_res.append(res)
-                                else:
-                                    messagebox.showinfo(
-                                        "Error",
-                                        "Can only trade up to 4 resources at a time.",
-                                    )
-                    elif (self.mouse_pos_in_bounds(box_2[0], (box_2[0] +
-                            box_2[2]), box_2[1], (box_2[1] + box_2[3]))):
+                                messagebox.showinfo(
+                                    "Error",
+                                    "Can only trade up to 4 resources at a time.",
+                                )
+                    elif self.mouse_pos_in_bounds(box_2[0], (box_2[0] +
+                            box_2[2]), box_2[1], (box_2[1] + box_2[3])):
                         pygame.draw.rect(self.screen, (255, 255, 255), box_2, width=4)
                         if mouse_click:
                             if self.game.must_respond_to_trade:
@@ -1741,17 +1716,16 @@ class Display(object):
                                     "Error",
                                     "Cannot modify proposed trade. Accept or reject.",
                                 )
+                            elif (
+                                len(self.active_receive_res)
+                                < self.game.max_trade_resources
+                            ):
+                                self.active_receive_res.append(res)
                             else:
-                                if (
-                                    len(self.active_receive_res)
-                                    < self.game.max_trade_resources
-                                ):
-                                    self.active_receive_res.append(res)
-                                else:
-                                    messagebox.showinfo(
-                                        "Error",
-                                        "Can only trade up to 4 resources at a time.",
-                                    )
+                                messagebox.showinfo(
+                                    "Error",
+                                    "Can only trade up to 4 resources at a time.",
+                                )
 
             if self.game.can_move_robber:
                 if over_edge == False and over_corner == False:
@@ -1773,4 +1747,5 @@ class Display(object):
             pygame.display.update()
             self.game_log_sftext.post_update()
             pygame.event.pump()
+
 
