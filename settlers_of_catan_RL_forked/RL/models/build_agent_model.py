@@ -5,7 +5,6 @@ import torch
 from RL.models.action_heads_module import (
     ActionHead,
     MultiActionHeadsGeneralised,
-    RecurrentResourceActionHead,
 )
 from RL.models.observation_module import ObservationModule
 from RL.models.policy import SettlersAgentPolicy
@@ -33,7 +32,7 @@ proj_dev_card_dim = 25
 dev_card_model_num_heads = 4
 tile_encoder_num_layers = 2
 proj_tile_dim = 25
-action_mlp_sizes = [128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128]
+action_mlp_sizes = 128
 max_propose_res = 4  # maximum resources to include in proposition
 
 
@@ -51,7 +50,6 @@ def build_agent_model(
     tile_encoder_num_layers=tile_encoder_num_layers,
     proj_tile_dim=proj_tile_dim,
     action_mlp_sizes=action_mlp_sizes,
-    max_propose_res=max_propose_res,
     device="cpu",
 ):
 
@@ -78,73 +76,37 @@ def build_agent_model(
     action_type_head = ActionHead(
         action_head_in_dim,
         ACTION_TYPE_COUNT,
-        mlp_size=action_mlp_sizes[0],
+        mlp_size=action_mlp_sizes,
         id="action_type",
     )
     corner_head = ActionHead(
         action_head_in_dim + 2,
         N_CORNERS,
-        mlp_size=action_mlp_sizes[1],
+        mlp_size=action_mlp_sizes,
         id="corner_head",
     )  # plus 2 for type
     edge_head = ActionHead(
-        action_head_in_dim, N_EDGES + 1, mlp_size=action_mlp_sizes[2], id="edge_head"
+        action_head_in_dim, N_EDGES + 1, mlp_size=action_mlp_sizes, id="edge_head"
     )
     tile_head = ActionHead(
-        action_head_in_dim, N_TILES, mlp_size=action_mlp_sizes[3], id="tile_head"
+        action_head_in_dim, N_TILES, mlp_size=action_mlp_sizes, id="tile_head"
     )
     play_development_card_head = ActionHead(
         action_head_in_dim,
         PLAY_DEVELOPMENT_CARD_DIM,
-        mlp_size=action_mlp_sizes[4],
+        mlp_size=action_mlp_sizes,
         id="development_card_head",
-    )
-    accept_reject_head = ActionHead(
-        action_head_in_dim,
-        2,
-        custom_inputs={"proposed_trade": 2 * RESOURCE_DIM},
-        mlp_size=action_mlp_sizes[5],
-        id="accept_reject_head",
-        custom_out_size=32,
     )
     player_head = ActionHead(
         action_head_in_dim + 2,
         N_PLAYERS - 1,
-        mlp_size=action_mlp_sizes[6],
+        mlp_size=action_mlp_sizes,
         id="player_head",
-    )
-    propose_give_res_head = RecurrentResourceActionHead(
-        action_head_in_dim,
-        RESOURCE_DIM,
-        max_count=max_propose_res,
-        mlp_size=action_mlp_sizes[7],
-        id="propose_give_head",
-        mask_based_on_curr_res=True,
-    )
-    propose_receive_res_head = RecurrentResourceActionHead(
-        action_head_in_dim + RESOURCE_DIM,
-        RESOURCE_DIM,
-        max_count=max_propose_res,
-        mlp_size=action_mlp_sizes[8],
-        id="propose_receive_head",
-        mask_based_on_curr_res=False,
-    )
-    exchange_res_head = ActionHead(
-        action_head_in_dim + 4,
-        RESOURCE_DIM - 1,
-        mlp_size=action_mlp_sizes[9],
-        id="exchange_res_head",
-    )
-    receive_res_head = ActionHead(
-        action_head_in_dim + 4 + RESOURCE_DIM - 1,
-        RESOURCE_DIM - 1,
-        mlp_size=action_mlp_sizes[10],
-        id="receive_res_head",
     )
     discard_head = ActionHead(
         action_head_in_dim,
         RESOURCE_DIM - 1,
-        mlp_size=action_mlp_sizes[10],
+        mlp_size=action_mlp_sizes,
         id="discard_res_head",
     )
 
@@ -154,12 +116,7 @@ def build_agent_model(
         edge_head,
         tile_head,
         play_development_card_head,
-        accept_reject_head,
         player_head,
-        propose_give_res_head,
-        propose_receive_res_head,
-        exchange_res_head,
-        receive_res_head,
         discard_head,
     ]
 

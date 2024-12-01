@@ -268,8 +268,10 @@ class ActionHead(nn.Module):
         self.input_dim = main_input_dim + custom_out_size
 
         custom_in_dim = 0
+
         for name, size in custom_inputs.items():
             custom_in_dim += size
+
         self.output_dim = output_dim
         self.type = type
         self.mlp_size = mlp_size
@@ -287,6 +289,7 @@ class ActionHead(nn.Module):
         self.relu = nn.ReLU()
 
         dist_input_size = mlp_size
+
         if type == "categorical":
             self.distribution = Categorical(
                 num_inputs=dist_input_size, num_outputs=output_dim
