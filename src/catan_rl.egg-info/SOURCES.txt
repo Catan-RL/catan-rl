@@ -1,9 +1,13 @@
 README.md
 pyproject.toml
+src/catan.py
+src/catan_agent/distributions.py
+src/catan_agent/utils.py
 src/catan_agent/forward_search_policy/policy.py
 src/catan_agent/forward_search_policy/sample_actions_fn.py
 src/catan_agent/forward_search_policy/utils.py
 src/catan_agent/forward_search_policy/worker.py
+src/catan_agent/models/action_head.py
 src/catan_agent/models/action_heads_module.py
 src/catan_agent/models/build_agent_model.py
 src/catan_agent/models/multi_headed_attention.py
@@ -25,7 +29,7 @@ src/catan_agent/ppo/vec_evaluation.py
 src/catan_agent/ppo/vec_gather_experience.py
 src/catan_env/__init__.py
 src/catan_env/catan_env.py
-src/catan_env/catan_env_backup.py
+src/catan_env/catan_env39.py
 src/catan_env/wrapper.py
 src/catan_env/game/__init__.py
 src/catan_env/game/enums.py
@@ -40,6 +44,7 @@ src/catan_env/game/components/player.py
 src/catan_env/game/components/tile.py
 src/catan_env/ui/__init__.py
 src/catan_env/ui/display.py
+src/catan_env/ui/old_display.py
 src/catan_env/ui/sftext/__init__.py
 src/catan_env/ui/sftext/resources.py
 src/catan_env/ui/sftext/sftext.py
@@ -54,4 +59,7 @@ src/catan_rl.egg-info/PKG-INFO
 src/catan_rl.egg-info/SOURCES.txt
 src/catan_rl.egg-info/dependency_links.txt
 src/catan_rl.egg-info/top_level.txt
+tests/test_catan_agent.py
 tests/test_catan_env.py
+tests/test_render.py
+tests/testing.py
