@@ -9,6 +9,7 @@ from RL.forward_search_policy.policy import ForwardSearchPolicy
 from RL.forward_search_policy.sample_actions_fn import default_sample_actions
 from RL.models.build_agent_model import build_agent_model
 from ui.display import Display
+from ui.display import Session
 
 device = "cpu"
 
@@ -104,10 +105,14 @@ if __name__ == "__main__":
     env = EnvWrapper(policies=policies, max_proposed_trades_per_turn=max_trades)
     env.reset()
     display = Display(
-        env=env,
         game=env.game,
-        interactive=True,
-        policies=policies,
-        test=False,
         debug_mode=False,
     )
+    session = Session(
+        env=env,
+        game=env.game,
+        display=display,
+        policies=policies,
+        test=True,
+    )
+

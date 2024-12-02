@@ -39,21 +39,29 @@ class Game:
         self.interactive = interactive
         self.debug_mode = debug_mode
         self.policies = policies
-        if interactive:
-            self.display = Display(
-                self,
-                interactive=interactive,
-                debug_mode=debug_mode,
-                policies=policies,
-            )
-        else:
-            self.display = None
+        # if interactive:
+        #     self.display = Display(
+        #         self,
+        #         interactive=interactive,
+        #         debug_mode=debug_mode,
+        #         policies=policies,
+        #     )
+        # else:
+        #     self.display = None
+        self.display = Display(self, debug_mode=debug_mode)
+        # if interactive:
+        #     session = Session(
+        #         display=self.display,
+        #         policies=policies,
+        #         test=True,
+        #     )
 
     def render(self):
         if self.display is None:
-            self.display = Display(
-                self, interactive=self.interactive, debug_mode=self.debug_mode
-            )
+            self.display = Display(self, debug_mode=self.debug_mode)
+            # self.display = Display(
+            #     self, interactive=self.interactive, debug_mode=self.debug_mode
+            # )
 
         self.display.render()
 
