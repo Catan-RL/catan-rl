@@ -21,14 +21,8 @@ N_CORNERS = 54
 N_EDGES = 72
 N_TILES = 19
 
-# TODO:
-# - set up logging
-# - implement rendering
-# - debug stuck game with > 100k steps without ending
-
 
 class PettingZooCatanEnv(AECEnv):
-    # TODO: implement rendering
     metadata = {"render.modes": ["human"]}
 
     def __init__(
@@ -43,7 +37,6 @@ class PettingZooCatanEnv(AECEnv):
         super().__init__()
 
         self.enable_dev_cards: bool = enable_dev_cards
-        # TODO: replace max actions per turn with max number of turns total
         self.max_actions_per_turn: int = max_actions_per_turn
 
         self.game: Game = Game(
@@ -84,21 +77,7 @@ class PettingZooCatanEnv(AECEnv):
             agent: 0 for agent in self.agents
         }
 
-        print(f"Restting game with {self.num_max_agents} players")
-        print(
-            "Observation space as follows: each agent has observation array of shape: "
-            f"{spaces.flatdim(self._get_flat_obs_space(self.agents[0]))}\n"
-            f"and an action mask and action space of shape: {spaces.flatdim(self._get_action_space(self.agents[0]))}\n"
-        )
-
-    def render(self) -> None:
-        self.game.render()
-
-    def close(self) -> None:
-        pass
-
     def step(self, action: list[npt.NDArray]) -> None:
-
         # print("Agent order:", self.game.player_order)
         # print(
         #     f"Agent: {self.agent_selection}, Last Agent: {self._is_last_agent()}"
@@ -471,62 +450,58 @@ class PettingZooCatanEnv(AECEnv):
         translated: dict[str, Any] = {
             "type": action_type,
         }
+        if action_type == ActionTypes.MoveRobber:
+            translated["tile"] = head_tile.argmax().item()
+        elif action_type == ActionTypes.PlaceSettlement or action_type == ActionTypes.UpgradeToCity:
+            translated["corner"] = head_corner.argmax().item()
+        elif action_type == ActionTypes.PlaceRoad:
+            edge = head_edge.argmax().item()
 
-        match action_type:
-            case ActionTypes.MoveRobber:
-                translated["tile"] = head_tile.argmax().item()
-            case ActionTypes.PlaceSettlement | ActionTypes.UpgradeToCity:
-                translated["corner"] = head_corner.argmax().item()
-            case ActionTypes.PlaceRoad:
-                edge = head_edge.argmax().item()
+            # the last edge is the empty edge, which means skipping the road placement
+            if edge == N_EDGES:
+                edge = None
+            translated["edge"] = edge
+        elif action_type == ActionTypes.PlayDevelopmentCard:
+            card_type = DevelopmentCard(head_dev_card.argmax().item())
+            translated["card"] = card_type
 
-                # the last edge is the empty edge, which means skipping the road placement
-                if edge == N_EDGES:
-                    edge = None
-                translated["edge"] = edge
-            case ActionTypes.PlayDevelopmentCard:
-                card_type = DevelopmentCard(head_dev_card.argmax().item())
-                translated["card"] = card_type
-
-                match card_type:
-                    case DevelopmentCard.YearOfPlenty:
-                        translated["resource_1"] = Resource.from_non_empty(
-                            head_resource[0, :].argmax().item()
-                        )
-                        translated["resource_2"] = Resource.from_non_empty(
-                            head_resource[1, :].argmax().item()
-                        )
-                    case DevelopmentCard.Monopoly:
-                        translated["resource"] = Resource.from_non_empty(
-                            head_resource[0, :].argmax().item()
-                        )
-
-            case ActionTypes.StealResource:
-                rel_pos = head_player.argmax().item()
-                translated["target"] = self._get_agent_from_rel_pos(
-                    self.agent_selection, rel_pos
-                )
-            case ActionTypes.DiscardResource:
-                translated["resources"] = [
-                    Resource.from_non_empty(
-                        head_resource[0, :].argmax().item()
-                    )
-                ]
-
-            case ActionTypes.ExchangeResource:
-                translated["desired_resource"] = Resource.from_non_empty(
+            if card_type == DevelopmentCard.YearOfPlenty:
+                translated["resource_1"] = Resource.from_non_empty(
                     head_resource[0, :].argmax().item()
                 )
-                translated["trading_resource"] = Resource.from_non_empty(
+                translated["resource_2"] = Resource.from_non_empty(
                     head_resource[1, :].argmax().item()
                 )
-                translated["exchange_rate"] = self._get_exchange_rate(
-                    self.agent_selection, translated["trading_resource"]
+            elif card_type == DevelopmentCard.Monopoly:
+                translated["resource"] = Resource.from_non_empty(
+                    head_resource[0, :].argmax().item()
                 )
+        elif action_type == ActionTypes.StealResource:
+            rel_pos = head_player.argmax().item()
+            translated["target"] = self._get_agent_from_rel_pos(
+                self.agent_selection, rel_pos
+            )
+        elif action_type == ActionTypes.DiscardResource:
+            translated["resources"] = [
+                Resource.from_non_empty(
+                    head_resource[0, :].argmax().item()
+                )
+            ]
 
-            case _:
-                # nothing special for the rest
-                pass
+        elif action_type == ActionTypes.ExchangeResource:
+            translated["desired_resource"] = Resource.from_non_empty(
+                head_resource[0, :].argmax().item()
+            )
+            translated["trading_resource"] = Resource.from_non_empty(
+                head_resource[1, :].argmax().item()
+            )
+            translated["exchange_rate"] = self._get_exchange_rate(
+                self.agent_selection, translated["trading_resource"]
+            )
+
+        else:
+            # nothing special for the rest
+            pass
 
         return translated
 
@@ -565,17 +540,16 @@ class PettingZooCatanEnv(AECEnv):
             # TODO: seems to be a bug thinking lost VPs when they shouldn't be
             curr_player_reward -= 5
 
-        match action["type"]:
-            case ActionTypes.PlayDevelopmentCard:
-                curr_player_reward += 5
-            case ActionTypes.MoveRobber:
-                curr_player_reward += 1
-            case ActionTypes.StealResource:
-                curr_player_reward += 0.5
-            case ActionTypes.DiscardResource:
-                curr_player_reward -= 0.25
-            case ActionTypes.UpgradeToCity:
-                curr_player_reward += 3
+        if action["type"] == ActionTypes.PlayDevelopmentCard:
+            curr_player_reward += 5
+        elif action["type"] == ActionTypes.MoveRobber:
+            curr_player_reward += 1
+        elif action["type"] ==  ActionTypes.StealResource:
+            curr_player_reward += 0.5
+        elif action["type"] ==  ActionTypes.DiscardResource:
+            curr_player_reward -= 0.25
+        elif action["type"] ==  ActionTypes.UpgradeToCity:
+            curr_player_reward += 3
 
         step_rewards[curr_player.id] = curr_player_reward
 
@@ -699,29 +673,29 @@ class PettingZooCatanEnv(AECEnv):
 
             count = self.game.resource_bank[resource]
 
-            match count:
-                case x if 0 <= x <= 2:
-                    bucketed = count
-                case x if 3 <= x <= 5:
-                    bucketed = 3
-                case x if 6 <= x <= 8:
-                    bucketed = 4
-                case _:
-                    bucketed = 5
+            if count >= 0 and count <= 2:
+                bucketed = count
+            elif count >= 3 and count <= 5:
+                bucketed = 3
+            elif count >= 6 and count <= 8:
+                bucketed = 4
+            else:
+                bucketed = 5
 
             features_arr[i] = bucketed
 
         if self.enable_dev_cards:
             dev_card_count = len(self.game.development_cards)
-            match dev_card_count:
-                case x if 0 <= x <= 2:
-                    bucketed = dev_card_count
-                case x if 3 <= x <= 5:
-                    bucketed = 3
-                case x if 6 <= x <= 8:
-                    bucketed = 4
-                case _:
-                    bucketed = 5
+
+            if dev_card_count >= 0 and dev_card_count <= 2:
+                bucketed = dev_card_count
+            elif dev_card_count >= 3 and dev_card_count <= 5:
+                bucketed = 3
+            elif dev_card_count >= 6 and dev_card_count <= 8:
+                bucketed = 4
+            else:
+                bucketed = 5
+            
 
             features_arr[-1] = bucketed
 
@@ -778,11 +752,12 @@ class PettingZooCatanEnv(AECEnv):
         resources = np.zeros((len(Resource.non_empty())), dtype=np.int8)
         for res_idx, resource in enumerate(Resource.non_empty()):
             count = player.resources[resource]
-            match count:
-                case x if 0 <= x <= 7:
-                    bucketed = count
-                case _:
-                    bucketed = 8
+
+            if count >= 0 and count <= 7:
+                bucketed = count
+            else:
+                bucketed = 8
+
             resources[res_idx] = bucketed
 
         resource_production = np.zeros(
@@ -799,11 +774,10 @@ class PettingZooCatanEnv(AECEnv):
                     and corner.building is not None
                     and corner.building.owner == player
                 ):
-                    match corner.building:
-                        case BuildingType.Settlement:
-                            production += 1
-                        case BuildingType.City:
-                            production += 2
+                    if corner.building == BuildingType.Settlement:
+                        production += 1
+                    elif corner.building == BuildingType.City:
+                        production += 2
 
             resource_production[resource.int_non_empty(), tile.value - 2] = (
                 production

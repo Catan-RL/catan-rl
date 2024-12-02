@@ -42,7 +42,7 @@ def main():
     os.makedirs(experiment_dir, exist_ok=True)
 
     # torch.set_num_threads(1)
-    device = torch.device("cuda")
+    device = torch.device("cuda:0" if args.cuda else "cpu")
 
     rollout_manager_fns = [
         make_game_manager(args.num_envs_per_process, args.num_steps) for _ in range(args.num_processes)

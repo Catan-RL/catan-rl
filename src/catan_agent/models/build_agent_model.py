@@ -10,7 +10,7 @@ from catan_agent.models.observation_module import ObservationModule
 from catan_agent.models.policy import SettlersAgentPolicy
 
 """constants"""
-ACTION_TYPE_COUNT = 13
+ACTION_TYPE_COUNT = 10
 N_CORNERS = 54
 N_EDGES = 72
 N_TILES = 19
