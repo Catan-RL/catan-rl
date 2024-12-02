@@ -8,7 +8,7 @@ from catan_env.catan_env import PettingZooCatanEnv
 if __name__ == "__main__":
     np.random.seed(0)
 
-    env = PettingZooCatanEnv(interactive=False)
+    env = PettingZooCatanEnv(interactive=True)
     # wrapped = AssertOutOfBoundsWrapper(env)
     # wrapped = OrderEnforcingWrapper(wrapped)
 
@@ -42,6 +42,7 @@ if __name__ == "__main__":
                         observation["action_mask"]
                     )
             env.step(action)
+            env.render()
 
         env.close()
 
