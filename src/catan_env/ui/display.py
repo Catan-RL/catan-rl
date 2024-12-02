@@ -194,7 +194,7 @@ class Display(object):
                     )
                     break
 
-        self.image_path = ["ui", "images"]
+        self.image_path = ["src", "catan_env", "ui", "images"]
         self.terrain_image_paths = {
             Terrain.Desert: "tiles/desert.png",
             Terrain.Fields: "tiles/wheat.png",

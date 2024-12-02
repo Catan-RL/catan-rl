@@ -91,6 +91,12 @@ class PettingZooCatanEnv(AECEnv):
             f"and an action mask and action space of shape: {spaces.flatdim(self._get_action_space(self.agents[0]))}\n"
         )
 
+    def render(self) -> None:
+        self.game.render()
+
+    def close(self) -> None:
+        pass
+
     def step(self, action: list[npt.NDArray]) -> None:
 
         # print("Agent order:", self.game.player_order)
