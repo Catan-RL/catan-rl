@@ -1,3 +1,4 @@
+from __future__ import annotations
 import functools
 from collections import Counter, OrderedDict
 from typing import Any

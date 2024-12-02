@@ -1,3 +1,6 @@
+# place this in:
+# path_to_marllib_git_repo/envs/base_env/config/
+
 env: catan # latest pettingzoo with gymnasium
 
 env_args:

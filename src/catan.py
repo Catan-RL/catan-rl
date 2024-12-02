@@ -3,7 +3,7 @@ import time
 from typing import Any
 
 # pettingzoo 1.23.0
-from catan_env.catan_env import PettingZooCatanEnv
+from catan_env.catan_env39 import PettingZooCatanEnv
 from marllib import marl
 from marllib.envs.base_env import ENV_REGISTRY
 
