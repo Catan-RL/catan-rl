@@ -1,2 +1,0 @@
-catan_agent
-catan_env
