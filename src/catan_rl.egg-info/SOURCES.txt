@@ -59,6 +59,7 @@ src/catan_rl.egg-info/PKG-INFO
 src/catan_rl.egg-info/SOURCES.txt
 src/catan_rl.egg-info/dependency_links.txt
 src/catan_rl.egg-info/top_level.txt
+src/config/__init__.py
 tests/test_catan_agent.py
 tests/test_catan_env.py
 tests/test_render.py

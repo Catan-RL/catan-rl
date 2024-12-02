@@ -1,11 +1,12 @@
-from ray.rllib.env.multi_agent_env import MultiAgentEnv
 import time
 from typing import Any
 
-# pettingzoo 1.23.0
-from catan_env.catan_env import PettingZooCatanEnv
 from marllib import marl
 from marllib.envs.base_env import ENV_REGISTRY
+from ray.rllib.env.multi_agent_env import MultiAgentEnv
+
+# pettingzoo 1.23.0
+from catan_env.catan_env import PettingZooCatanEnv
 
 REGISTRY = {}
 REGISTRY["catan_scenario"] = PettingZooCatanEnv
@@ -19,9 +20,10 @@ policy_mapping_dict = {
     },
 }
 
+
 class RLlib_Catan(MultiAgentEnv):
 
-    def __init__(self, env_config: dict[str,Any]):
+    def __init__(self, env_config: dict[str, Any]):
 
         map = env_config["map_name"]
         env_config.pop("map_name", None)
@@ -54,12 +56,10 @@ class RLlib_Catan(MultiAgentEnv):
         terminations = self.env.terminations
 
         dones = {
-            truncations[agent] or terminations[agent]
-            for agent in self.agents
+            truncations[agent] or terminations[agent] for agent in self.agents
         }
 
         return observations, rewards, dones, info
-        
 
     def close(self):
         self.env.close()
@@ -78,9 +78,19 @@ class RLlib_Catan(MultiAgentEnv):
             "policy_mapping_info": policy_mapping_dict,
         }
         return env_info
-    
-if __name__ == '__main__':
+
+
+if __name__ == "__main__":
     # register new env
     ENV_REGISTRY["catan"] = PettingZooCatanEnv
 
     env = marl.make_env(environment_name="catanEnv", map_name="catan")
+    env[0].render()
+    input()
+
+    # # initialize algorithm with appointed hyper-parameters
+    # mappo = marl.algos.mappo(hyperparam_source="mpe")
+    # # build agent model based on env + algorithms + user preference
+    # model = marl.build_model(env, mappo, {"core_arch": "mlp", "encode_layer": "128-256"})
+    # # start training
+    # mappo.fit(env, model, stop={"timesteps_total": 1000000}, checkpoint_freq=100, share_policy="group")

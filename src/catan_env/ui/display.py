@@ -157,7 +157,17 @@ class Display(object):
                     )
                     break
 
-        self.image_path = ["src", "catan_env", "ui", "images"]
+        common_path = ["catan_env", "ui", "images"]
+        local_path = ["src"] + common_path
+        marllib_path = ["marllib", "envs", "base_env"] + common_path
+
+        if os.path.exists(os.path.join(*local_path)):
+            self.image_path = local_path
+        elif os.path.exists(os.path.join(*marllib_path)):
+            self.image_path = marllib_path
+        else:
+            raise FileNotFoundError("Could not find image path")
+
         self.terrain_image_paths = {
             Terrain.Desert: "tiles/desert.png",
             Terrain.Fields: "tiles/wheat.png",
