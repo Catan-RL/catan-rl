@@ -12,7 +12,7 @@ authors = [
 ]
 readme = "README.md"
 license = {text = "GPL-3.0 License"}
-requires-python = ">=3.11"
+requires-python = ">=3.9,<3.10"
 
 [tool.black]
 line-length = 88
