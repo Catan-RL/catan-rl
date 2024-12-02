@@ -8,7 +8,7 @@ import pygame
 import torch
 from scipy.spatial.distance import pdist, squareform
 
-from game.enums import (
+from catan_env.game.enums import (
     HARBOUR_CORNER_AND_EDGES,
     TILE_NEIGHBOURS,
     ActionTypes,
@@ -18,7 +18,7 @@ from game.enums import (
     Resource,
     Terrain,
 )
-from ui.sftext.sftext import SFText
+from catan_env.ui.sftext.sftext import SFText
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "sftext/"))
 
