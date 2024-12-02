@@ -29,8 +29,7 @@ src/catan_agent/ppo/vec_evaluation.py
 src/catan_agent/ppo/vec_gather_experience.py
 src/catan_env/__init__.py
 src/catan_env/catan_env.py
-src/catan_env/catan_env39.py
-src/catan_env/wrapper.py
+src/catan_env/catan_env311.py
 src/catan_env/game/__init__.py
 src/catan_env/game/enums.py
 src/catan_env/game/game.py

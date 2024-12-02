@@ -27,13 +27,18 @@ pip install -r requirements.txt
 
 cd ../MARLlib/marllib/patch
 python add_patch.py -y
+cd ../../../gym
+pip install .
+
+cd ../MARLlib/
+cp ../catan-rl/requirements.txt ./
 pip install .
 
 cd ../catan-rl/
 pip install -e .
 ```
 
-To run the code:
+To register the code with MARLlib:
 
 ```
 ./register_env.sh

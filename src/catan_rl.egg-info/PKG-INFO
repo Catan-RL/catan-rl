@@ -9,21 +9,8 @@ Description-Content-Type: text/markdown
 
 # Multi Agent Deep Reinforcement Learning for Simplified Settlers of Catan
 
-
-env setup
-
-```
-conda activate catan...
-
-cp ./src/catan.py ~/dev/projects/catan-rl/MARLlib/marllib/envs/base_env/
-cp ./src/config/catan.yaml ~/dev/projects/catan-rl/MARLlib/marllib/envs/base_env/config
-cp -r ./src/catan_env/ ~/dev/projects/catan-rl/MARLlib/marllib/envs/base_env/
-
-cd ~/dev/projects/catan-rl/MARLlib/
-pip install .
-```
-
 To get started, first clone the repo:
+
 ```
 git clone git@github.com:Catan-RL/catan-rl.git && cd catan-rl
 # or
@@ -34,12 +21,40 @@ To install dependencies:
 
 ```
 conda env create -f environment.yml
-conda activate catan-rl
+conda activate catan-rl-39
+
+cd ..
+git clone --branch v0.20.0-patched https://github.com/Catan-RL/gym.git && cd gym
+pip install .
+
+cd ..
+
+git clone https://github.com/Replicable-MARL/MARLlib.git
+
+cd catan-rl
 pip install -r requirements.txt
+
+cd ../MARLlib/marllib/patch
+python add_patch.py -y
+cd ../../../gym
+pip install .
+
+cd ../MARLlib/
+cp ../catan-rl/requirements.txt ./
+pip install .
+
+cd ../catan-rl/
 pip install -e .
 ```
 
+To run the code:
+
+```
+./register_env.sh
+```
+
 On GCP instance:
+
 ```
 # Install Git & dependencies for X11 forwarding over SSH
 sudo apt install git libx11-6 libx11-dev xauth x11-xserver-utils mousepad xvfb # revise later
@@ -55,11 +70,13 @@ conda init bash
 To enable SSH X11 forwarding, edit `/etc/ssh/sshd_config` and set `X11UseLocalhost no`, then `systemctl restart sshd`.
 
 To connect to GCP instance (currently the project is only set up for the `jyan1236` user):
+
 ```
 gcloud compute ssh --ssh-flag="-Y" jyan1236@gpu-instance
 ```
 
 GCP instance details:
+
 ```
 NVIDIA T4 GPU
 1 core 2 thread CPU
@@ -67,9 +84,12 @@ NVIDIA T4 GPU
 30 GB Disk Space
 ```
 
-Install Marllib in a separate env: 
 
-First, initalize the env and install PettingZoo dependencies: 
+# DO NOT USE THESE INSTRUCTIONS, THEY ARE LEGACY
+Install Marllib in a separate env:
+
+First, initalize the env and install PettingZoo dependencies:
+
 ```
 conda create -n marllib python=3.8
 conda activate marllib
@@ -77,25 +97,35 @@ pip install pettingzoo==1.23.1
 pip install supersuit==3.9.0
 pip install pygame==2.3.0
 ```
-Next, in a separate directory, clone the Marllib repo and run the following commands: 
+
+Next, in a separate directory, clone the Marllib repo and run the following commands:
+
 ```
 git clone https://github.com/Replicable-MARL/MARLlib.git
 cd MARLlib
 pip install --upgrade pip
 ```
-In Marllib's requirements.txt file, change the line: 
+
+In Marllib's requirements.txt file, change the line:
+
 ```
 gym==0.20.0
 ```
-to 
+
+to
+
 ```
 gym
 ```
-then 
+
+then
+
 ```
 pip install -r requirements.txt
 ```
+
 Next, we need to add a patch and install marllib
+
 ```
 pip install protobuf==3.20.3
 cd MARLlib/marllib/patch
@@ -103,7 +133,9 @@ python add_patch.py -y
 pip install marllib
 pip install gym==0.22.0
 ```
+
 You should be able to run marllib example code using
+
 ```
 python mappo_example.py
 ```
