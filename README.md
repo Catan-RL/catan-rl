@@ -42,6 +42,7 @@ To register the code with MARLlib:
 
 ```
 ./register_env.sh
+cd ../MARLlib
 ```
 
 On GCP instance:
@@ -60,10 +61,11 @@ conda init bash
 
 To enable SSH X11 forwarding, edit `/etc/ssh/sshd_config` and set `X11UseLocalhost no`, then `systemctl restart sshd`.
 
-To connect to GCP instance (currently the project is only set up for the `jyan1236` user):
+To connect to GCP instance:
 
 ```
-gcloud compute ssh --ssh-flag="-Y" jyan1236@gpu-instance
+gcloud compute ssh --ssh-flag="-Y" USERNAME@gpu-instance
+su - shared # switch to shared user (password: shared)
 ```
 
 GCP instance details:
