@@ -161,10 +161,15 @@ class Display(object):
         local_path = ["src"] + common_path
         marllib_path = ["marllib", "envs", "base_env"] + common_path
 
+        # attempt to find base don the path of this file
+        rel_path = [os.path.dirname(__file__), "images"]
+
         if os.path.exists(os.path.join(*local_path)):
             self.image_path = local_path
         elif os.path.exists(os.path.join(*marllib_path)):
             self.image_path = marllib_path
+        elif rel_path:
+            self.image_path = rel_path
         else:
             raise FileNotFoundError("Could not find image path")
 

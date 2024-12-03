@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 import functools
 from collections import Counter, OrderedDict
 from typing import Any
@@ -39,8 +40,10 @@ class PettingZooCatanEnv(AECEnv):
         num_players: int = 4,
         enable_dev_cards: bool = True,
         max_actions_per_turn: int = 10,
+        **kwargs,
     ):
         super().__init__()
+        print("Got extra kwards:", kwargs)
 
         self.enable_dev_cards: bool = enable_dev_cards
         # TODO: replace max actions per turn with max number of turns total
@@ -77,7 +80,9 @@ class PettingZooCatanEnv(AECEnv):
         }
 
         self.action_spaces = {
-            agent: self._get_action_space(agent) for agent in self.agents
+            # agent: self._get_action_space(agent) for agent in self.agents
+            agent: self._get_flat_action_space(agent)
+            for agent in self.agents
         }
 
         self._player_vps: dict[PlayerId, int] = {
@@ -88,7 +93,7 @@ class PettingZooCatanEnv(AECEnv):
         # print(
         #     "Observation space as follows: each agent has observation array of shape: "
         #     f"{spaces.flatdim(self._get_flat_obs_space(self.agents[0]))}\n"
-        #     f"and an action mask and action space of shape: {spaces.flatdim(self._get_action_space(self.agents[0]))}\n"
+        #     f"and an action mask and action space of shape: {spaces.flatdim(self._get_flat_action_space(self.agents[0]))}\n"
         # )
 
     def render(self) -> None:
@@ -97,8 +102,7 @@ class PettingZooCatanEnv(AECEnv):
     def close(self) -> None:
         pass
 
-    def step(self, action: list[npt.NDArray]) -> None:
-
+    def step(self, action: npt.NDArray) -> None:
         # print("Agent order:", self.game.player_order)
         # print(
         #     f"Agent: {self.agent_selection}, Last Agent: {self._is_last_agent()}"
@@ -113,26 +117,40 @@ class PettingZooCatanEnv(AECEnv):
             self._was_dead_step(None)
             return
 
+        # apply mask
+        mask = self.observe(self.agent_selection)["action_mask"]
+        action = np.bitwise_and(action, mask)
+
         # take the action
         translated_action = self._translate_action(action)
-        # print("Action:", translated_action)
+        print("Action:", translated_action)
         # print("Untranslated Action:", action)
         # print(self.game.players)
 
-        valid_action, error = self.game.validate_action(translated_action)
-        if not valid_action:
-            print(self.game.players[self.agent_selection].resources)
-
-            raise RuntimeError(
+        # valid_action, error = self.game.validate_action(translated_action)
+        valid = self.game.validate_action(translated_action)
+        if isinstance(valid, tuple):
+            valid_action, error = valid
+        else:
+            valid_action = valid
+            error = None
+        if valid_action:
+            message = self.game.apply_action(translated_action)
+        else:
+            message = (
                 f"Invalid action {translated_action}\nResulted in: {error}"
             )
+            print(message)
 
-        message = self.game.apply_action(translated_action)
+            # raise RuntimeError(
+            #     f"Invalid action {translated_action}\nResulted in: {error}"
+            # )
+
         self.infos[self.agent_selection]["log"] = message
 
         # compute rewards
         if self._is_last_agent():
-            self._update_rewards(translated_action)
+            self._update_rewards(translated_action, valid_action)
         else:
             # clear rewards from previous step
             self._clear_rewards()
@@ -201,7 +219,10 @@ class PettingZooCatanEnv(AECEnv):
 
         flat_obs = spaces.flatten(self._get_obs_space(agent), unflat_obs)
 
-        action_mask = tuple(self._get_action_mask(agent))
+        # action_mask = tuple(self._get_action_mask(agent))
+        action_mask = spaces.flatten(
+            self._get_action_space(agent), tuple(self._get_action_mask(agent))
+        )
         obs = OrderedDict(
             {
                 "observation": flat_obs,
@@ -209,9 +230,9 @@ class PettingZooCatanEnv(AECEnv):
             }
         )
 
-        if not self.observation_space(agent).contains(obs):
-            self.print_obs(obs)  # type: ignore
-            raise ValueError("ERROR: Observation is not in observation space")
+        # if not self.observation_space(agent).contains(obs):
+        #     self.print_obs(obs)  # type: ignore
+        #     raise ValueError("ERROR: Observation is not in observation space")
 
         return obs
 
@@ -234,8 +255,17 @@ class PettingZooCatanEnv(AECEnv):
         return spaces.Dict(
             {
                 "observation": self._get_flat_obs_space(agent),
-                "action_mask": self._get_action_space(agent),
+                # "action_mask": self._get_action_space(agent),
+                "action_mask": self._get_flat_action_space(agent),
             }
+        )
+
+    def _get_flat_action_space(self, _agent: PlayerId) -> spaces.Space:
+        return spaces.flatten_space(self._get_action_space(_agent))
+
+    def _unflatten_action(self, action: np.ndarray) -> list[np.ndarray]:
+        return spaces.unflatten(
+            self._get_action_space(self.agent_selection), action
         )
 
     def _get_action_space(self, _agent: PlayerId) -> spaces.Space:
@@ -456,7 +486,11 @@ class PettingZooCatanEnv(AECEnv):
 
         return obs
 
-    def _translate_action(self, action: list[np.ndarray]) -> dict[str, Any]:
+    def _translate_action(self, action: np.ndarray) -> dict[str, Any]:
+        # unflatten the action
+        action = self._unflatten_action(action)
+        assert isinstance(action, tuple)
+
         (
             head_action_type,
             head_tile,
@@ -473,7 +507,10 @@ class PettingZooCatanEnv(AECEnv):
         }
         if action_type == ActionTypes.MoveRobber:
             translated["tile"] = head_tile.argmax().item()
-        elif action_type == ActionTypes.PlaceSettlement or action_type == ActionTypes.UpgradeToCity:
+        elif (
+            action_type == ActionTypes.PlaceSettlement
+            or action_type == ActionTypes.UpgradeToCity
+        ):
             translated["corner"] = head_corner.argmax().item()
         elif action_type == ActionTypes.PlaceRoad:
             edge = head_edge.argmax().item()
@@ -504,9 +541,7 @@ class PettingZooCatanEnv(AECEnv):
             )
         elif action_type == ActionTypes.DiscardResource:
             translated["resources"] = [
-                Resource.from_non_empty(
-                    head_resource[0, :].argmax().item()
-                )
+                Resource.from_non_empty(head_resource[0, :].argmax().item())
             ]
 
         elif action_type == ActionTypes.ExchangeResource:
@@ -532,7 +567,9 @@ class PettingZooCatanEnv(AECEnv):
             for player in self.game.players.values()
         )
 
-    def _update_rewards(self, action: dict[str, Any]) -> None:
+    def _update_rewards(
+        self, action: dict[str, Any], valid_action: bool
+    ) -> None:
         step_rewards = {agent: 0.0 for agent in self.agents}
 
         # check for a winner
@@ -549,28 +586,32 @@ class PettingZooCatanEnv(AECEnv):
                 if agent != winner:
                     step_rewards[agent] = -100
 
-        curr_player_reward = 0.0
         curr_player = self.game.players[self.agent_selection]
+        if valid_action:
+            curr_player_reward = 0.0
 
-        # reward for increasing VPs, do not punish as harshly for losing VPs
-        if curr_player.victory_points > self._player_vps[curr_player.id]:
-            curr_player_reward += 10 * (
-                curr_player.victory_points - self._player_vps[curr_player.id]
-            )
+            # reward for increasing VPs, do not punish as harshly for losing VPs
+            if curr_player.victory_points > self._player_vps[curr_player.id]:
+                curr_player_reward += 10 * (
+                    curr_player.victory_points
+                    - self._player_vps[curr_player.id]
+                )
+            else:
+                # TODO: seems to be a bug thinking lost VPs when they shouldn't be
+                curr_player_reward -= 5
+
+            if action["type"] == ActionTypes.PlayDevelopmentCard:
+                curr_player_reward += 5
+            elif action["type"] == ActionTypes.MoveRobber:
+                curr_player_reward += 1
+            elif action["type"] == ActionTypes.StealResource:
+                curr_player_reward += 0.5
+            elif action["type"] == ActionTypes.DiscardResource:
+                curr_player_reward -= 0.25
+            elif action["type"] == ActionTypes.UpgradeToCity:
+                curr_player_reward += 3
         else:
-            # TODO: seems to be a bug thinking lost VPs when they shouldn't be
-            curr_player_reward -= 5
-
-        if action["type"] == ActionTypes.PlayDevelopmentCard:
-            curr_player_reward += 5
-        elif action["type"] == ActionTypes.MoveRobber:
-            curr_player_reward += 1
-        elif action["type"] == ActionTypes.StealResource:
-            curr_player_reward += 0.5
-        elif action["type"] == ActionTypes.DiscardResource:
-            curr_player_reward -= 0.25
-        elif action["type"] == ActionTypes.UpgradeToCity:
-            curr_player_reward += 3
+            curr_player_reward = -10
 
         step_rewards[curr_player.id] = curr_player_reward
 
@@ -716,7 +757,6 @@ class PettingZooCatanEnv(AECEnv):
                 bucketed = 4
             else:
                 bucketed = 5
-            
 
             features_arr[-1] = bucketed
 
