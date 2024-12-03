@@ -28,6 +28,8 @@ activate_env
 MARLLIB_DIR=${1:-../MARLlib}
 echo "Using MARLlib directory: $MARLLIB_DIR"
 
+cp ./requirements.txt "$MARLLIB_DIR/"
+
 # Copy the necessary files to the MARLlib base environment
 echo "Copying files to the MARLlib base environment..."
 cp ./src/catan.py "$MARLLIB_DIR/marllib/envs/base_env/"
