@@ -2,10 +2,8 @@ import time
 from typing import Any
 
 import gym.spaces
+import gymnasium.spaces
 import numpy as np
-from gymnasium.spaces import Box
-from gymnasium.spaces import Dict as GymnasiumDict
-from gymnasium.spaces import Discrete
 
 # from gymnasium.spaces import Dict as GymDict
 from marllib import marl
@@ -22,26 +20,26 @@ policy_mapping_dict = {
     "catan_scenario": {
         "description": "four players competative",
         "team_prefix": ("white_", "blue_", "orange_", "red_"),
-        "all_agents_one_policy": True,
+        "all_agents_one_policy": False,
         "one_agent_one_policy": True,
     },
 }
 
 
-def convert_gymnasium_dict_to_gym_dict(gymnasium_dict):
-    """
-    Convert a gymnasium.spaces.Dict to a gym.spaces.Dict.
-    """
-    if not isinstance(gymnasium_dict, GymnasiumDict):
-        raise ValueError("Input must be a gymnasium.spaces.Dict")
-
-    # Recursively convert the spaces
-    converted_dict = {
-        key: convert_space(value)
-        for key, value in gymnasium_dict.spaces.items()
-    }
-
-    return gym.spaces.Dict(converted_dict)
+# def convert_gymnasium_dict_to_gym_dict(gymnasium_dict):
+#     """
+#     Convert a gymnasium.spaces.Dict to a gym.spaces.Dict.
+#     """
+#     if not isinstance(gymnasium_dict, gymnasium.spaces.Dict):
+#         raise ValueError("Input must be a gymnasium.spaces.Dict")
+#
+#     # Recursively convert the spaces
+#     converted_dict = {
+#         key: convert_space(value)
+#         for key, value in gymnasium_dict.spaces.items()
+#     }
+#
+#     return gym.spaces.Dict(converted_dict)
 
 
 def convert_space(space):
@@ -49,14 +47,31 @@ def convert_space(space):
     Convert individual spaces from gymnasium to gym.
     Handles nested spaces recursively if needed.
     """
-    if isinstance(space, GymnasiumDict):
-        return convert_gymnasium_dict_to_gym_dict(space)
-    elif isinstance(space, Box):
+    if isinstance(space, gymnasium.spaces.Dict):
+        return gym.spaces.Dict(
+            {key: convert_space(value) for key, value in space.spaces.items()}
+        )
+    elif isinstance(space, gymnasium.spaces.Box):
         return gym.spaces.Box(
             low=space.low, high=space.high, dtype=space.dtype
         )
-    elif isinstance(space, Discrete):
+    elif isinstance(space, gymnasium.spaces.Discrete):
         return gym.spaces.Discrete(n=space.n)
+    elif isinstance(space, gymnasium.spaces.Tuple):
+        return gym.spaces.Tuple([convert_space(s) for s in space.spaces])
+    elif isinstance(space, gymnasium.spaces.MultiBinary):
+        return gym.spaces.MultiBinary(n=space.n)
+    elif isinstance(space, gymnasium.spaces.MultiDiscrete):
+        return gym.spaces.MultiDiscrete(nvec=space.nvec)
+    elif isinstance(space, gymnasium.spaces.Text):
+        return gym.spaces.Text(
+            max_length=space.max_length, charset=space.charset
+        )
+    elif isinstance(space, gymnasium.spaces.Graph):
+        return gym.spaces.Graph(
+            node_space=convert_space(space.node_space),
+            edge_space=convert_space(space.edge_space),
+        )
     else:
         raise NotImplementedError(
             f"Conversion for {type(space)} is not implemented"
@@ -90,13 +105,26 @@ class RLlib_Catan(MultiAgentEnv):
         print("agents", self.agents)
 
         self.observation_space = gym.spaces.Dict(
-            {"obs": full_obs["observation"]}
+            {
+                "obs": full_obs["observation"],
+                "action_mask": full_obs["action_mask"],
+            }
         )
-        self.action_space = convert_space(
-            self.env.action_spaces[list(self.agent_map.values())[0]]
-        )
+        # self.observation_space = gym.spaces.Dict(
+        #     {
+        #         "obs": gym.spaces.Dict({
+        #             "obs": full_obs["observation"],
+        #             "action_mask": full_obs["action_mask"],
+        #         })
+        #     }
+        # )
 
-        print("observation_space", self.observation_space)
+        # self.action_space = convert_space(
+        #     self.env.action_spaces[list(self.agent_map.values())[0]]
+        # )
+        self.action_space = convert_space(
+            self.env._get_flat_action_space(list(self.agent_map.values())[0])
+        )
 
         env_config["map_name"] = map
         self.env_config = env_config
@@ -108,20 +136,31 @@ class RLlib_Catan(MultiAgentEnv):
         # print("action type", type(self.action_space))
         # print(self.action_space)
 
+    def _get_obs_all_agents(self):
+        obs = {}
+        for agent_id, agent in self.agent_map.items():
+            agent_obs = self.env.observe(agent)
+            obs[agent_id] = {
+                "obs": agent_obs["observation"],
+                "action_mask": agent_obs["action_mask"],
+            }
+
+        return obs
+
     def reset(self):
         self.env.reset()
 
         # obs = {agent: self.env.observe(agent) for agent in self.agents}
-        obs = {}
-        for agent_id, agent in self.agent_map.items():
-            # obs[agent_id] = self.env.observe(agent)["observation"]
-            obs[agent_id] = {"obs": self.env.observe(agent)["observation"]}
+        obs = self._get_obs_all_agents()
 
         return obs
 
     def step(self, action_dict):
+        print("taking a step in marllib env")
+        print("action_dict", action_dict)
 
         for agent_id, action in action_dict.items():
+            print(f"applying step in marllib env for agent: {agent_id}")
 
             # # get action mask
             # agent = self.agent_map[agent_id]
@@ -135,15 +174,16 @@ class RLlib_Catan(MultiAgentEnv):
             # print("masked_action", masked_action)
             # print(any(masked_action != action))
             #
-            self.env.step(action)
+            self.env.step(action, do_mask=True)
 
         # observations = self.env.observation_spaces
-        observations = {}
-        for agent_id, agent in self.agent_map.items():
-            # observations[agent_id] = self.env.observe(agent)["observation"]
-            observations[agent_id] = {
-                "obs": self.env.observe(agent)["observation"]
-            }
+        # observations = {}
+        # for agent_id, agent in self.agent_map.items():
+        #     # observations[agent_id] = self.env.observe(agent)["observation"]
+        #     observations[agent_id] = {
+        #         "obs": self.env.observe(agent)["observation"]
+        #     }
+        observations = self._get_obs_all_agents()
 
         rewards = self.env._cumulative_rewards
 

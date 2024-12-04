@@ -2,19 +2,20 @@
 
 For information about invalid action masking in PettingZoo, see https://pettingzoo.farama.org/api/aec/#action-masking
 For more information about invalid action masking in SB3, see https://sb3-contrib.readthedocs.io/en/master/modules/ppo_mask.html
+
+Author: Elliot (https://github.com/elliottower)
 """
 
 import glob
 import os
 import time
 
-import pettingzoo.utils
 from sb3_contrib import MaskablePPO
 from sb3_contrib.common.maskable.policies import MaskableActorCriticPolicy
 from sb3_contrib.common.wrappers import ActionMasker
-from stable_baselines3 import PPO
 
-from catan_env.catan_env import PettingZooCatanEnv
+import pettingzoo.utils
+from pettingzoo.classic import connect_four_v3
 
 
 class SB3ActionMaskWrapper(pettingzoo.utils.BaseWrapper):
@@ -59,9 +60,7 @@ def mask_fn(env):
 
 def train_action_mask(env_fn, steps=10_000, seed=0, **env_kwargs):
     """Train a single model to play as each agent in a zero-sum game environment using invalid action masking."""
-    env = env_fn(**env_kwargs)  # .env
-
-    print(env.action_spaces)
+    env = env_fn.env(**env_kwargs)
 
     print(f"Starting training on {str(env.metadata['name'])}.")
 
@@ -106,8 +105,7 @@ def eval_action_mask(env_fn, num_games=100, render_mode=None, **env_kwargs):
         print("Policy not found.")
         exit(0)
 
-    # model = MaskablePPO.load(latest_policy)
-    model = PPO.load(latest_policy)
+    model = MaskablePPO.load(latest_policy)
 
     scores = {agent: 0 for agent in env.possible_agents}
     total_rewards = {agent: 0 for agent in env.possible_agents}
@@ -167,14 +165,19 @@ def eval_action_mask(env_fn, num_games=100, render_mode=None, **env_kwargs):
 
 
 if __name__ == "__main__":
-    env_fn = PettingZooCatanEnv
+    env_fn = connect_four_v3
 
     env_kwargs = {}
 
-    # Train a model against itself
+    # Evaluation/training hyperparameter notes:
+    # 10k steps: Winrate:  0.76, loss order of 1e-03
+    # 20k steps: Winrate:  0.86, loss order of 1e-04
+    # 40k steps: Winrate:  0.86, loss order of 7e-06
+
+    # Train a model against itself (takes ~20 seconds on a laptop CPU)
     train_action_mask(env_fn, steps=20_480, seed=0, **env_kwargs)
 
-    # Evaluate 100 games against a random agent
+    # Evaluate 100 games against a random agent (winrate should be ~80%)
     eval_action_mask(env_fn, num_games=100, render_mode=None, **env_kwargs)
 
     # Watch two games vs a random agent

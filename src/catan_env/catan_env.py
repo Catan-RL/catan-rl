@@ -30,7 +30,7 @@ N_TILES = 19
 
 
 class PettingZooCatanEnv(AECEnv):
-    metadata = {"render.modes": ["human"]}
+    metadata = {"render.modes": ["human"], "name": "catan"}
 
     def __init__(
         self,
@@ -70,18 +70,31 @@ class PettingZooCatanEnv(AECEnv):
         self.terminations = {agent: False for agent in self.agents}
         # truncation is us forcing the game to end for that player
         self.truncations = {agent: False for agent in self.agents}
+        self.dones = {agent: False for agent in self.agents}
 
         self.rewards = {agent: 0 for agent in self.agents}
         self._cumulative_rewards = {agent: 0 for agent in self.agents}
         self.infos = {agent: {"log": ""} for agent in self.agents}
+
+        # self.observation_spaces = {
+        #     agent: self._get_obs_space_with_mask(agent)
+        #     for agent in self.agents
+        # }
+        # self.observation_spaces = {
+        #     agent: self._get_flat_obs_space(agent) for agent in self.agents
+        # }
+        # self.action_spaces = {
+        #     agent: self._get_action_space(agent)
+        #     # agent: self._get_flat_action_space(agent)
+        #     for agent in self.agents
+        # }
+
         self.observation_spaces = {
-            agent: self._get_obs_space_with_mask(agent)
+            agent: self._get_obs_space_with_multibinary_mask(agent)
             for agent in self.agents
         }
-
         self.action_spaces = {
-            # agent: self._get_action_space(agent) for agent in self.agents
-            agent: self._get_flat_action_space(agent)
+            agent: self._get_action_space_as_single_multibinary(agent)
             for agent in self.agents
         }
 
@@ -102,7 +115,7 @@ class PettingZooCatanEnv(AECEnv):
     def close(self) -> None:
         pass
 
-    def step(self, action: npt.NDArray) -> None:
+    def step(self, action: npt.NDArray, do_mask: bool = False) -> None:
         # print("Agent order:", self.game.player_order)
         # print(
         #     f"Agent: {self.agent_selection}, Last Agent: {self._is_last_agent()}"
@@ -117,13 +130,33 @@ class PettingZooCatanEnv(AECEnv):
             self._was_dead_step(None)
             return
 
-        # apply mask
-        mask = self.observe(self.agent_selection)["action_mask"]
-        action = np.bitwise_and(action, mask)
+        # unflatten the action, if needed
+        if isinstance(action, np.ndarray):
+            action = self._unflatten_action(action)
+        assert isinstance(action, tuple)
+
+        # apply mask if needed
+        if do_mask:
+            # mask = self.observe(self.agent_selection)["action_mask"]
+            # mask = spaces.flatten(
+            #     self._get_action_space(self.agent_selection),
+            #     tuple(self._get_action_mask(self.agent_selection)),
+            # )
+            # masked_action = np.bitwise_and(action, mask)
+            # print("did mask work?", (action != masked_action).any())
+
+            mask = tuple(self._get_action_mask(self.agent_selection))
+
+            masked_action = []
+            for i, head in enumerate(action):
+                masked_action.append(np.bitwise_and(head, mask[i]))
+            action = tuple(masked_action)
+
+            print(f"masked action for player {self.agent_selection}:")
 
         # take the action
         translated_action = self._translate_action(action)
-        print("Action:", translated_action)
+        # print("Action:", translated_action)
         # print("Untranslated Action:", action)
         # print(self.game.players)
 
@@ -136,6 +169,7 @@ class PettingZooCatanEnv(AECEnv):
             error = None
         if valid_action:
             message = self.game.apply_action(translated_action)
+            print("Applied valid action:", translated_action)
         else:
             message = (
                 f"Invalid action {translated_action}\nResulted in: {error}"
@@ -220,21 +254,25 @@ class PettingZooCatanEnv(AECEnv):
         flat_obs = spaces.flatten(self._get_obs_space(agent), unflat_obs)
 
         # action_mask = tuple(self._get_action_mask(agent))
-        action_mask = spaces.flatten(
-            self._get_action_space(agent), tuple(self._get_action_mask(agent))
-        )
+        # action_mask = spaces.flatten(
+        #     self._get_action_space(agent), tuple(self._get_action_mask(agent))
+        # )
+
+        action_mask = self._get_action_mask_multibinary(agent)
         obs = OrderedDict(
             {
                 "observation": flat_obs,
                 "action_mask": action_mask,
             }
         )
+        # obs = OrderedDict({"observation": flat_obs})
 
         # if not self.observation_space(agent).contains(obs):
         #     self.print_obs(obs)  # type: ignore
         #     raise ValueError("ERROR: Observation is not in observation space")
 
         return obs
+        # return flat_obs
 
     @functools.lru_cache(maxsize=None)
     def action_space(self, agent: PlayerId) -> spaces.Space:
@@ -255,8 +293,20 @@ class PettingZooCatanEnv(AECEnv):
         return spaces.Dict(
             {
                 "observation": self._get_flat_obs_space(agent),
-                # "action_mask": self._get_action_space(agent),
-                "action_mask": self._get_flat_action_space(agent),
+                "action_mask": self._get_action_space(agent),
+                # "action_mask": self._get_flat_action_space(agent),
+            }
+        )
+
+    def _get_obs_space_with_multibinary_mask(
+        self, agent: PlayerId
+    ) -> spaces.Space:
+        return spaces.Dict(
+            {
+                "observation": self._get_flat_obs_space(agent),
+                "action_mask": self._get_action_space_as_single_multibinary(
+                    agent
+                ),
             }
         )
 
@@ -316,6 +366,26 @@ class PettingZooCatanEnv(AECEnv):
         action_space = spaces.Tuple(
             [head_1, head_2, head_3, head_4, head_5, head_6, head_7]
         )
+        return action_space
+
+    def _get_action_space_as_single_multibinary(
+        self, _agent: PlayerId
+    ) -> spaces.Space:
+        """
+        take each action head from a normal action space and concat them
+        """
+
+        action_space = spaces.MultiBinary(
+            len(ActionTypes.in_use())
+            + N_TILES
+            + N_CORNERS
+            + N_EDGES
+            + 1
+            + len(DevelopmentCard)
+            + 2 * len(Resource.non_empty())
+            + self.num_max_agents
+        )
+
         return action_space
 
     def _get_flat_obs_space(self, _agent: PlayerId) -> spaces.Space:
@@ -486,9 +556,7 @@ class PettingZooCatanEnv(AECEnv):
 
         return obs
 
-    def _translate_action(self, action: np.ndarray) -> dict[str, Any]:
-        # unflatten the action
-        action = self._unflatten_action(action)
+    def _translate_action(self, action: tuple[np.ndarray]) -> dict[str, Any]:
         assert isinstance(action, tuple)
 
         (
@@ -588,7 +656,7 @@ class PettingZooCatanEnv(AECEnv):
 
         curr_player = self.game.players[self.agent_selection]
         if valid_action:
-            curr_player_reward = 0.0
+            curr_player_reward = -0.05
 
             # reward for increasing VPs, do not punish as harshly for losing VPs
             if curr_player.victory_points > self._player_vps[curr_player.id]:
@@ -879,6 +947,32 @@ class PettingZooCatanEnv(AECEnv):
         player = self.game.players[agent]
 
         return np.int64(len(player.hidden_cards))
+
+    def _get_action_mask_multibinary(
+        self, agent: PlayerId
+    ) -> npt.NDArray[np.int8]:
+        (
+            head_action_type,
+            head_tile,
+            head_corner,
+            head_edge,
+            head_dev_card,
+            head_resource,
+            head_player,
+        ) = self._get_action_mask(agent)
+
+        return np.concatenate(
+            [
+                head_action_type,
+                head_tile,
+                head_corner,
+                head_edge,
+                head_dev_card,
+                head_resource[0],
+                head_resource[1],
+                head_player,
+            ]
+        )
 
     def _get_action_mask(self, agent: PlayerId) -> list[npt.NDArray[np.int8]]:
         """
