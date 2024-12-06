@@ -1,0 +1,2 @@
+num_games_complete,update_num,val_loss,action_loss,entropy_loss,total_policy_steps,total_elapsed_time,curr_entropy_coef,curr_reward_weight
+0,1,0.002663381916954677,-0.010474953478842508,0.10127533526718616,6400,0.017240914238823783,,
